@@ -43,7 +43,7 @@ export function EmailsPage() {
   // Calculate stats
   const totalScanned = emails.length
   const cleanCount = emails.filter(e => e.status === "clean" || e.status === "Unscanned").length // Treat unscanned as neutral for now
-  const threatsCount = emails.filter(e => e.status === "Blocked").length
+  const threatsCount = emails.filter(e => e.status === "blocked").length
   const manualCount = emails.filter(e => e.status === "Pending").length
 
   return (
