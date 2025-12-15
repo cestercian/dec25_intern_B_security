@@ -79,13 +79,13 @@ def test_fetch_recent_emails_success():
         # Verify Inbox Email
         inbox_email = next(e for e in emails if e['id'] == 'msg1')
         assert inbox_email['subject'] == 'Inbox 1'
-        assert inbox_email['status'] == 'clean'
+        assert inbox_email['status'] == 'Unscanned'
         assert inbox_email['folder'] == 'Inbox'
         
         # Verify Spam Email
         spam_email = next(e for e in emails if e['id'] == 'msg3')
         assert spam_email['subject'] == 'Spam 1'
-        assert spam_email['status'] == 'blocked'
+        assert spam_email['status'] == 'Unscanned'
         assert spam_email['folder'] == 'Spam'
 
 def test_fetch_recent_emails_empty():
