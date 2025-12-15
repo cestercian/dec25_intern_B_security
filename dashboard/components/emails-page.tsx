@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { useSession } from "next-auth/react"
 import { fetchEmails } from "@/lib/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -17,7 +17,7 @@ export function EmailsPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const loadEmails = async () => {
+  const loadEmails = useCallback(async () => {
     if (!session?.accessToken) return
 
     setLoading(true)
@@ -32,17 +32,16 @@ export function EmailsPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [session?.accessToken])
 
   useEffect(() => {
-    if (session?.accessToken) {
-      loadEmails()
-    }
-  }, [session?.accessToken])
+    loadEmails()
+  }, [loadEmails])
 
   // Calculate stats
   const totalScanned = emails.length
-  const cleanCount = emails.filter(e => e.status === "clean" || e.status === "Unscanned").length // Treat unscanned as neutral for now
+  const cleanCount = emails.filter(e => e.status === "clean").length
+  const unscannedCount = emails.filter(e => e.status === "Unscanned").length
   const threatsCount = emails.filter(e => e.status === "blocked").length
   const manualCount = emails.filter(e => e.status === "Pending").length
 
@@ -61,7 +60,7 @@ export function EmailsPage() {
 
       {session ? (
         /* Stats Cards */
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           <Card className="border-border">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">Total Scanned</CardTitle>
@@ -79,6 +78,16 @@ export function EmailsPage() {
             <CardContent>
               <div className="text-2xl font-bold text-green-500">{cleanCount}</div>
               <p className="text-xs text-muted-foreground mt-1">Safe emails</p>
+            </CardContent>
+          </Card>
+
+          <Card className="border-border">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Unscanned</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-yellow-500">{unscannedCount}</div>
+              <p className="text-xs text-muted-foreground mt-1">Pending analysis</p>
             </CardContent>
           </Card>
 
