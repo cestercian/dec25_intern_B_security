@@ -9,6 +9,7 @@ from sqlmodel import JSON, Column, Enum, Field, Relationship, SQLModel
 
 
 class UserRole(str, enum.Enum):
+    platform_admin = "platform_admin"
     admin = "admin"
     member = "member"
 

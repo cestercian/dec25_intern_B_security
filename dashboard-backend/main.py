@@ -179,8 +179,14 @@ async def get_current_user(
 
 
 async def require_admin(ctx: AuthUserContext = Depends(get_current_user)) -> AuthUserContext:
-    if ctx.user.role != UserRole.admin:
+    if ctx.user.role not in (UserRole.admin, UserRole.platform_admin):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    return ctx
+
+
+async def require_platform_admin(ctx: AuthUserContext = Depends(get_current_user)) -> AuthUserContext:
+    if ctx.user.role != UserRole.platform_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Platform admin access required")
     return ctx
 
 
@@ -330,7 +336,7 @@ async def list_emails(
 @app.post("/api/organizations", response_model=OrganisationCreateResponse, status_code=status.HTTP_201_CREATED)
 async def create_organization(
     payload: OrganisationCreate,
-    ctx: AuthUserContext = Depends(require_admin),
+    ctx: AuthUserContext = Depends(require_platform_admin),
     session: AsyncSession = Depends(get_session),
 ) -> OrganisationCreateResponse:
     # Generate API key - plaintext shown once, only hash stored
@@ -358,7 +364,7 @@ async def create_organization(
 
 @app.get("/api/organizations", response_model=list[OrganisationRead])
 async def list_organizations(
-    ctx: AuthUserContext = Depends(require_admin),
+    ctx: AuthUserContext = Depends(require_platform_admin),
     session: AsyncSession = Depends(get_session),
 ) -> list[Organisation]:
     result = await session.exec(select(Organisation))
@@ -371,7 +377,18 @@ async def create_user(
     ctx: AuthUserContext = Depends(require_admin),
     session: AsyncSession = Depends(get_session),
 ) -> User:
-    org_id = payload.org_id or ctx.organisation.id
+    if ctx.user.role == UserRole.platform_admin:
+        # Platform admin can create users for any org (default to their own)
+        org_id = payload.org_id or ctx.organisation.id
+    else:
+        # Regular admin can only create users for their own org
+        if payload.org_id and payload.org_id != ctx.organisation.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, 
+                detail="Cannot create users for other organisations"
+            )
+        org_id = ctx.organisation.id
+
     user = User(
         email=payload.email,
         clerk_id=payload.clerk_id,
@@ -390,8 +407,22 @@ async def list_users(
     ctx: AuthUserContext = Depends(require_admin),
     session: AsyncSession = Depends(get_session),
 ) -> list[User]:
-    target_org = org_id or ctx.organisation.id
-    result = await session.exec(select(User).where(User.org_id == target_org))
+    if ctx.user.role == UserRole.platform_admin:
+        # Platform admin can filter by org or see all
+        if org_id:
+            query = select(User).where(User.org_id == org_id)
+        else:
+            query = select(User)
+    else:
+        # Regular admin restricted to own org
+        if org_id and org_id != ctx.organisation.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, 
+                detail="Cannot list users of other organisations"
+            )
+        query = select(User).where(User.org_id == ctx.organisation.id)
+
+    result = await session.exec(query)
     return result.all()
 
 
@@ -405,7 +436,9 @@ async def update_user_role(
     user = await session.get(User, user_id)
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    if user.org_id != ctx.organisation.id:
+    
+    # Check permissions: platform_admin can edit anyone; regular admin only their own org
+    if ctx.user.role != UserRole.platform_admin and user.org_id != ctx.organisation.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot modify users outside organisation")
 
     user.role = payload.role
