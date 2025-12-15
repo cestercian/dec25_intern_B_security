@@ -92,5 +92,5 @@ class GmailService:
             logger.error(f"Gmail API error: {e}", exc_info=True)
             raise  # Re-raise to let caller handle API errors
         except Exception as e:
-            logger.exception(f"Unexpected error fetching emails: {e}")
+            logger.exception("Unexpected error fetching emails")
             raise
