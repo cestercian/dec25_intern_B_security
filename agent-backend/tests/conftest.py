@@ -57,20 +57,30 @@ async def test_session(test_engine) -> AsyncGenerator[AsyncSession, None]:
 @pytest_asyncio.fixture
 async def test_org(test_session: AsyncSession) -> dict:
     """Create a test organisation and return its data as a dict."""
+    import hashlib
+    # Use a known test API key for testing
+    test_api_key = "sk_test-api-key-12345"
+    test_api_key_hash = hashlib.sha256(test_api_key.encode()).hexdigest()
+    test_api_key_prefix = test_api_key[:8]
+    
     org = Organisation(
         id=uuid.uuid4(),
         name="Test Organisation",
         domain="test.com",
-        api_key="test-api-key-12345",
+        api_key_hash=test_api_key_hash,
+        api_key_prefix=test_api_key_prefix,
     )
     test_session.add(org)
     await test_session.commit()
     await test_session.refresh(org)
+    # Include plaintext key for test purposes only
     return {
         "id": org.id,
         "name": org.name,
         "domain": org.domain,
-        "api_key": org.api_key,
+        "api_key": test_api_key,  # Plaintext for testing
+        "api_key_hash": org.api_key_hash,
+        "api_key_prefix": org.api_key_prefix,
     }
 
 

@@ -95,18 +95,25 @@ async def test_email_event_optional_fields(test_session: AsyncSession, test_org:
 @pytest.mark.asyncio
 async def test_organisation_crud(test_session: AsyncSession):
     """Create and read Organisation."""
+    import hashlib
+    test_api_key = "sk_test-key-abc"
+    test_api_key_hash = hashlib.sha256(test_api_key.encode()).hexdigest()
+    test_api_key_prefix = test_api_key[:8]
+    
     org = Organisation(
         id=uuid.uuid4(),
         name="Test Org",
         domain="testorg.com",
-        api_key="test-key-abc",
+        api_key_hash=test_api_key_hash,
+        api_key_prefix=test_api_key_prefix,
     )
     test_session.add(org)
     await test_session.commit()
 
     result = await test_session.exec(
-        select(Organisation).where(Organisation.api_key == "test-key-abc")
+        select(Organisation).where(Organisation.api_key_hash == test_api_key_hash)
     )
     fetched = result.first()
     assert fetched is not None
     assert fetched.name == "Test Org"
+    assert fetched.api_key_prefix == test_api_key_prefix
