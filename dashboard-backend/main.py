@@ -15,6 +15,7 @@ from google.auth.transport import requests
 from googleapiclient.discovery import build
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlmodel import SQLModel, select 
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -94,6 +95,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Global exception: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal Server Error", "error": str(exc)},
+        headers={
+            "Access-Control-Allow-Origin": request.headers.get("origin", "*"),
+            "Access-Control-Allow-Credentials": "true",
+        }
+    )
+
 GOOGLE_CLIENT_ID = os.getenv("AUTH_GOOGLE_ID")
 DEV_MODE = os.getenv("DEV_MODE", "false").lower() in ("true", "1", "yes")
 
@@ -135,8 +149,9 @@ def _verify_google_token(token: str) -> dict:
         return id_info
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Google token") from exc
-
-
+    except Exception as exc:
+        logger.error(f"Unexpected error verifying token: {exc}")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token verification failed") from exc
 
 
 def _extract_bearer_token(authorization: str | None) -> str:
@@ -201,6 +216,8 @@ async def get_current_user(
     result = await session.exec(select(User).where(User.google_id == google_id))
     user = result.first()
     if not user:
+        email = payload.get("email", "unknown")
+        print(f"\n=== USER NOT FOUND ===\nGoogle ID: {google_id}\nEmail: {email}\n======================\n")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
 
     org = await session.get(Organisation, user.org_id)
