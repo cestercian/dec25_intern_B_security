@@ -26,8 +26,12 @@ logger = logging.getLogger(__name__)
 
 
 def _hash_api_key(api_key: str) -> str:
-    """Hash an API key using SHA-256 for secure storage."""
-    return hashlib.sha256(api_key.encode()).hexdigest()
+    """Hash an API key using scrypt for secure storage (memory-hard key derivation)."""
+    # Note: Ideally, a unique salt per API key should be used and stored in DB.
+    # Here, for minimal change, we use a static application salt.
+    salt = b"dashboard_backend_api_key_salt"  # static, should be constant for all keys; change requires key re-hashing
+    hashed = hashlib.scrypt(api_key.encode(), salt=salt, n=2**14, r=8, p=1, dklen=32)
+    return hashed.hex()
 
 
 def _generate_api_key() -> tuple[str, str, str]:
