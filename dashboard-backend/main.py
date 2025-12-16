@@ -23,14 +23,23 @@ except ImportError:
 
 app = FastAPI(title="PhishGuard Dashboard API", version="0.1.0")
 
+# CORS configuration - validate origins
+_cors_origins = os.getenv("CORS_ALLOW_ORIGINS", "").split(",")
+_cors_origins = [o.strip() for o in _cors_origins if o.strip()]
+if not _cors_origins:
+    raise RuntimeError("CORS_ALLOW_ORIGINS must be set (comma-separated list of allowed origins)")
+if "*" in _cors_origins:
+    raise RuntimeError("Wildcard '*' in CORS_ALLOW_ORIGINS is not allowed with credentials")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.getenv("CORS_ALLOW_ORIGINS", "*").split(","),
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+DEV_MODE = os.getenv("DEV_MODE", "false").lower() == "true"
 CLERK_JWKS_URL = os.getenv("CLERK_JWKS_URL")
 CLERK_AUDIENCE = os.getenv("CLERK_AUDIENCE")
 _jwks_client: Optional[PyJWKClient] = PyJWKClient(CLERK_JWKS_URL) if CLERK_JWKS_URL else None
@@ -55,13 +64,20 @@ def _decode_clerk_token(token: str) -> dict:
                 audience=CLERK_AUDIENCE if CLERK_AUDIENCE else None,
                 options={"verify_aud": bool(CLERK_AUDIENCE)},
             )
-        except Exception as exc:  # noqa: BLE001
+        except jwt.ExpiredSignatureError as exc:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has expired") from exc
+        except jwt.InvalidTokenError as exc:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Clerk token") from exc
 
     # Fallback: decode without signature verification (development only)
+    if not DEV_MODE:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="JWKS not configured and DEV_MODE is not enabled"
+        )
     try:
         return jwt.decode(token, options={"verify_signature": False})
-    except Exception as exc:  # noqa: BLE001
+    except jwt.InvalidTokenError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from exc
 
 
@@ -106,7 +122,7 @@ async def require_admin(ctx: AuthUserContext = Depends(get_current_user)) -> Aut
 
 
 async def verify_api_key(
-    x_api_key: str | None = Header(default=None, convert_underscores=False),
+    x_api_key: str | None = Header(default=None),
     session: AsyncSession = Depends(get_session),
 ) -> Organisation:
     if not x_api_key:

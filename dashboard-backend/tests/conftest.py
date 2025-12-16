@@ -18,9 +18,11 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-# Set DATABASE_URL before importing models/database to avoid RuntimeError
+# Set environment variables before importing modules
 import os
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
+os.environ.setdefault("CORS_ALLOW_ORIGINS", "http://localhost:3000")
+os.environ.setdefault("DEV_MODE", "true")
 
 from models import Organisation, User, UserRole
 
