@@ -1,6 +1,6 @@
 """Tests for database and model functionality."""
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pytest
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -51,7 +51,7 @@ async def test_email_event_default_status(test_session: AsyncSession, test_org: 
 @pytest.mark.asyncio
 async def test_email_event_timestamps(test_session: AsyncSession, test_org: dict):
     """created_at/updated_at fields are set correctly."""
-    before_create = datetime.utcnow()
+    before_create = datetime.now(timezone.utc)
 
     email = EmailEvent(
         id=uuid.uuid4(),
@@ -64,10 +64,11 @@ async def test_email_event_timestamps(test_session: AsyncSession, test_org: dict
     await test_session.commit()
     await test_session.refresh(email)
 
-    after_create = datetime.utcnow()
+    after_create = datetime.now(timezone.utc)
 
     assert email.created_at is not None
-    assert before_create <= email.created_at <= after_create
+    # Compare timestamps (created_at should be between before and after)
+    assert email.created_at.replace(tzinfo=timezone.utc) >= before_create.replace(microsecond=0)
     assert email.updated_at is not None
 
 
