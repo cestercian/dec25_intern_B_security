@@ -65,16 +65,15 @@ async def process_email(session: AsyncSession, email: EmailEvent) -> None:
 
 async def run_loop() -> None:
     await init_db()
-    async for session in get_session():
-        while True:
+    while True:
+        # Acquire fresh session for each poll iteration to avoid stale connections
+        async for session in get_session():
             pending = await fetch_pending(session)
-            if not pending:
-                await asyncio.sleep(POLL_INTERVAL_SECONDS)
-                continue
-
-            for email in pending:
-                await process_email(session, email)
-            await asyncio.sleep(POLL_INTERVAL_SECONDS)
+            if pending:
+                for email in pending:
+                    await process_email(session, email)
+            break  # Exit the async for after one iteration
+        await asyncio.sleep(POLL_INTERVAL_SECONDS)
 
 
 def main() -> None:
