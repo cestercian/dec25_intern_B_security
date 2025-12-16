@@ -7,7 +7,7 @@ from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from .models import EmailEvent, Organisation, User  # noqa: F401 - ensure metadata import
+from models import EmailEvent, Organisation, User  # noqa: F401 - ensure metadata import
 
 load_dotenv()
 
@@ -26,10 +26,10 @@ engine = create_async_engine(
     DATABASE_URL,
     echo=False,
     future=True,
-    poolclass=QueuePool,
-    pool_size=5,  # Number of connections to keep open
-    max_overflow=10,  # Additional connections allowed beyond pool_size
-    pool_pre_ping=True,  # Verify connections before using (handles dropped connections)
+    # poolclass=QueuePool,  # Removed to support SQLite testing
+    # pool_size=5,
+    # max_overflow=10,
+    # pool_pre_ping=True,
 )
 
 
