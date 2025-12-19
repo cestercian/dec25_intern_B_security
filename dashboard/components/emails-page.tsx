@@ -1,5 +1,6 @@
 "use client"
 
+import * as React from "react"
 import { useEffect, useMemo, useState } from "react"
 
 import { useSession } from "next-auth/react"
@@ -25,23 +26,32 @@ export function EmailsPage() {
   const [error, setError] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<string>("all")
 
+  const syncedRef = React.useRef(false)
+  const lastTokenRef = React.useRef<string | null>(null)
+
   useEffect(() => {
     let active = true
     const load = async () => {
-      setLoading(true)
+      // If the token hasn't changed, don't re-fetch locally either to avoid flicker on tab switch
+      if (session?.idToken && lastTokenRef.current === session.idToken) {
+        return
+      }
+
+      // Only show loading state if we have no data to avoid flash
+      if (emails.length === 0) {
+        setLoading(true)
+      }
+      
       setError(null)
       try {
         if (!session?.idToken) {
-          // Wait for session to load or redirect handled by middleware
           if (session === null) throw new Error("Not authenticated")
           return
         }
 
-        // Trigger sync if we have an access token (background async or await?)
-        // User asked to "trigger fetch_gmail_messages... in a background task... ensure commits occur only for new records"
-        // On frontend, we should probably await sync then fetch, or fetch then sync in bg?
-        // The prompt implies we should trigger the sync.
-        if (session.accessToken) {
+        // Trigger sync only once per session mount
+        if (session.accessToken && !syncedRef.current) {
+          syncedRef.current = true
           // Fire and forget sync, don't block UI
           syncEmails(session.idToken, session.accessToken).catch(console.error)
         }
@@ -50,6 +60,7 @@ export function EmailsPage() {
         const data = await fetchEmails(session.idToken)
         if (active) {
           setEmails(data)
+          lastTokenRef.current = session.idToken
         }
       } catch (err) {
         if (active) {
