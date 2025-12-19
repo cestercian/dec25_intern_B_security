@@ -3,7 +3,8 @@ import logging
 import asyncio
 import json
 import requests
-from typing import List, Optional, Dict, Any
+import httpx
+from typing import List, Optional, Dict, Any, Literal, Set
 from fastapi import FastAPI, BackgroundTasks, status
 from pydantic import BaseModel
 from pythonjsonlogger import jsonlogger
@@ -20,6 +21,10 @@ logHandler.setFormatter(formatter)
 logger.addHandler(logHandler)
 logger.setLevel(logging.INFO)
 
+# --- State (Phase 2A: In-memory Idempotency) ---
+# Simple set to prevent processing the exact same message ID twice in one lifecycle.
+seen_messages: Set[str] = set()
+
 # --- Models ---
 class AttachmentMetadata(BaseModel):
     filename: str
@@ -34,7 +39,7 @@ class StructuredEmailPayload(BaseModel):
     attachment_metadata: List[AttachmentMetadata]
 
 class SandboxResult(BaseModel):
-    verdict: str # malicious, suspicious, clean, unknown
+    verdict: Literal["malicious", "suspicious", "clean", "unknown"]
     score: int
     family: Optional[str] = None
     confidence: float = 0.0
@@ -91,6 +96,7 @@ def evaluate_static_risk(payload: StructuredEmailPayload) -> tuple[bool, str, in
     reason_str = "; ".join(reasons) if reasons else "Low static risk"
     
     # Fail-safe: if score is high but somehow didn't trigger sandbox, force it
+    # Safety net: ensure high-risk messages always hit sandbox even if explicit triggers missed
     if score > 50:
         should_sandbox = True
         
@@ -114,6 +120,12 @@ async def process_analysis(payload: StructuredEmailPayload):
     Orchestrates the analysis logic:
     Risk Gate -> (Optional) Sandbox -> Unified Output -> Forward
     """
+    # Idempotency Check
+    if payload.message_id in seen_messages:
+        logger.warning("Duplicate message_id, skipping analysis", extra={"message_id": payload.message_id})
+        return
+    seen_messages.add(payload.message_id)
+
     logger.info(f"Starting analysis for {payload.message_id}")
     
     # 1. Risk Gate
@@ -121,7 +133,7 @@ async def process_analysis(payload: StructuredEmailPayload):
     logger.info(f"Risk Gate Result: sandboxed={should_sandbox} score={static_score} reason='{reason}'")
     
     sandbox_res = None
-    provider = "none"
+    provider = "risk-gate-only"
     
     # 2. Sandbox (if needed)
     if should_sandbox:
@@ -143,18 +155,23 @@ async def process_analysis(payload: StructuredEmailPayload):
         sandbox_result=sandbox_res,
         decision_metadata=DecisionMetadata(
             provider=provider,
+            timed_out=False,
             reason=reason
         )
     )
     
     # 4. Forward to Final Agent
-    forward_to_final_agent(unified)
+    await forward_to_final_agent(unified)
 
-def forward_to_final_agent(payload: UnifiedDecisionPayload):
+async def forward_to_final_agent(payload: UnifiedDecisionPayload):
     try:
         logger.info("Forwarding decision to Final Agent", extra={"message_id": payload.message_id, "verdict": payload.sandbox_result.verdict if payload.sandbox_result else "skipped"})
-        resp = requests.post(FINAL_AGENT_URL, json=payload.model_dump(), timeout=5)
-        resp.raise_for_status()
+        
+        # Use httpx AsyncClient to avoid blocking the event loop
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.post(FINAL_AGENT_URL, json=payload.model_dump())
+            resp.raise_for_status()
+            
     except Exception as e:
         logger.error(f"Failed to forward decision for {payload.message_id}: {e}")
 
