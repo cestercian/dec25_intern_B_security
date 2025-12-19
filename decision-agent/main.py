@@ -182,7 +182,7 @@ async def submit_to_hybrid_analysis(
                 files = {'file': (filename, file_content)}
                 data = {
                     'environment_id': '100', 
-                    'allow_community_access': 'false' 
+                    'allow_community_access': 'true' # Free Tier requires this
                 }
                 logger.info(f"Submitting file '{filename}' to Hybrid Analysis...")
                 resp = await client.post(
@@ -195,7 +195,7 @@ async def submit_to_hybrid_analysis(
                 data = {
                     'url': url,
                     'environment_id': '100',
-                    'allow_community_access': 'false'
+                    'allow_community_access': 'true' # Free Tier requires this
                 }
                 logger.info(f"Submitting URL '{url}' to Hybrid Analysis...")
                 resp = await client.post(
@@ -211,7 +211,12 @@ async def submit_to_hybrid_analysis(
                 await asyncio.sleep(60)
                 return None
             
-            resp.raise_for_status()
+            try:
+                resp.raise_for_status()
+            except httpx.HTTPStatusError as e:
+                logger.error(f"HA API Error Body: {resp.text}")
+                raise e
+
             result = resp.json()
             job_id = result.get('job_id')
             logger.info(f"Hybrid Analysis Job Submitted. ID: {job_id}")
@@ -228,7 +233,8 @@ async def poll_ha_report(job_id: str) -> Optional[Dict[str, Any]]:
         
     headers = {"api-key": HA_API_KEY, "User-Agent": "SecurityDecisionAgent/1.0"}
     url = f"{HA_API_URL}/report/{job_id}"
-    delays = [30, 60, 60, 60, 60]
+    # Extended polling for Free Tier (up to ~10 mins)
+    delays = [30, 60, 60, 60, 60, 60, 60, 60, 60, 60]
     
     async with httpx.AsyncClient(timeout=10.0) as client:
         for delay in delays:

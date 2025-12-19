@@ -10,5 +10,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Run the application
-# Use shell form to allow variable expansion if needed, but array form is safer for signals
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD exec uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080}
