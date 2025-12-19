@@ -65,6 +65,7 @@ class AttachmentMetadata(BaseModel):
     filename: str
     mime_type: str
     size: int
+    attachment_id: Optional[str] = None
 
 class StructuredEmailPayload(BaseModel):
     message_id: str
@@ -121,7 +122,8 @@ def extract_message_content(message_detail: Dict[str, Any]) -> StructuredEmailPa
             attachment_metadata.append(AttachmentMetadata(
                 filename=filename,
                 mime_type=mime_type,
-                size=body.get('size', 0)
+                size=body.get('size', 0),
+                attachment_id=body.get('attachmentId')
             ))
             # Do NOT fetch attachment content (security constraint)
             return
