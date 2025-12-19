@@ -168,7 +168,7 @@ def fetch_gmail_messages(access_token: str, limit: int = 10) -> list[dict]:
 
         # List messages
         # List messages
-        results = service.users().messages().list(userId="me", maxResults=limit).execute()
+        results = service.users().messages().list(userId="me", maxResults=limit, includeSpamTrash=True).execute()
         messages = results.get("messages", [])
 
         if not messages:
@@ -188,7 +188,9 @@ def fetch_gmail_messages(access_token: str, limit: int = 10) -> list[dict]:
             snippet = response.get("snippet", "")
             
             status = EmailStatus.pending
-            
+            if "SPAM" in response.get("labelIds", []):
+                status = EmailStatus.spam
+                
             email_data.append({
                 "sender": sender,
                 "recipient": recipient,

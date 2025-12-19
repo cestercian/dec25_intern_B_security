@@ -163,6 +163,7 @@ export function EmailsPage() {
                   <SelectItem value="PROCESSING">Processing</SelectItem>
                   <SelectItem value="COMPLETED">Completed</SelectItem>
                   <SelectItem value="FAILED">Failed</SelectItem>
+                  <SelectItem value="SPAM">Spam</SelectItem>
                 </SelectContent>
               </Select>
               <Button variant="outline" size="icon">

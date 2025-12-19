@@ -17,6 +17,7 @@ class EmailStatus(str, enum.Enum):
     processing = "PROCESSING"
     completed = "COMPLETED"
     failed = "FAILED"
+    spam = "SPAM"
 
 
 class RiskTier(str, enum.Enum):

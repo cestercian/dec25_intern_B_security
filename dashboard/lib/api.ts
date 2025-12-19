@@ -41,7 +41,7 @@ export type Email = {
   recipient: string
   subject: string
   body_preview?: string
-  status: "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED"
+  status: "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED" | "SPAM"
   risk_score?: number
   risk_tier?: "SAFE" | "CAUTIOUS" | "THREAT"
   analysis_result?: Record<string, unknown>
