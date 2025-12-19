@@ -345,36 +345,19 @@ async def get_stats(
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     """Get email statistics for the current user."""
-    # Total emails
-    total_result = await session.exec(
+    from sqlalchemy import func, text
+    
+    # Get all emails for user
+    all_emails = await session.exec(
         select(EmailEvent).where(EmailEvent.user_id == user.id)
     )
-    total_emails = len(total_result.all())
+    emails = all_emails.all()
     
-    # Emails by risk tier
-    safe_result = await session.exec(
-        select(EmailEvent).where(
-            EmailEvent.user_id == user.id,
-            EmailEvent.risk_tier == RiskTier.safe
-        )
-    )
-    safe_count = len(safe_result.all())
-    
-    cautious_result = await session.exec(
-        select(EmailEvent).where(
-            EmailEvent.user_id == user.id,
-            EmailEvent.risk_tier == RiskTier.cautious
-        )
-    )
-    cautious_count = len(cautious_result.all())
-    
-    threat_result = await session.exec(
-        select(EmailEvent).where(
-            EmailEvent.user_id == user.id,
-            EmailEvent.risk_tier == RiskTier.threat
-        )
-    )
-    threat_count = len(threat_result.all())
+    # Count by risk tier in Python to avoid enum issues
+    total_emails = len(emails)
+    safe_count = sum(1 for e in emails if e.risk_tier and e.risk_tier.value == "SAFE")
+    cautious_count = sum(1 for e in emails if e.risk_tier and e.risk_tier.value == "CAUTIOUS")
+    threat_count = sum(1 for e in emails if e.risk_tier and e.risk_tier.value == "THREAT")
     
     return {
         "total_emails": total_emails,

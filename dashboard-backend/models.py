@@ -5,9 +5,9 @@ from __future__ import annotations
 import enum
 import uuid
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Optional
 
-from sqlmodel import JSON, Column, Enum, Field, Relationship, SQLModel
+from sqlmodel import JSON, Column, Enum, Field, SQLModel
 
 
 class EmailStatus(str, enum.Enum):
@@ -38,9 +38,6 @@ class User(SQLModel, table=True):
         nullable=False,
     )
 
-    # Relationship to emails
-    email_events: List["EmailEvent"] = Relationship(back_populates="user")
-
 
 class EmailEvent(SQLModel, table=True):
     """Email event model - represents an analyzed email."""
@@ -56,13 +53,14 @@ class EmailEvent(SQLModel, table=True):
     status: EmailStatus = Field(
         default=EmailStatus.pending,
         sa_column=Column(
-            Enum(EmailStatus, name="email_status_enum"),
+            Enum(EmailStatus, name="email_status_enum", create_type=False),
             server_default="PENDING",
         ),
     )
     risk_score: Optional[int] = Field(default=None)
     risk_tier: Optional[RiskTier] = Field(
-        default=None, sa_column=Column(Enum(RiskTier, name="risk_tier_enum"))
+        default=None, 
+        sa_column=Column(Enum(RiskTier, name="risk_tier_enum", create_type=False))
     )
     analysis_result: Optional[dict] = Field(default=None, sa_column=Column(JSON))
     created_at: datetime = Field(
@@ -72,8 +70,4 @@ class EmailEvent(SQLModel, table=True):
     updated_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         nullable=False,
-        sa_column_kwargs={"onupdate": lambda: datetime.now(timezone.utc)},
     )
-
-    # Relationship to user
-    user: User = Relationship(back_populates="email_events")
