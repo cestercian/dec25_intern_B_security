@@ -209,9 +209,11 @@ export function LuffyChatbot() {
                         {/* Header */}
                         <div className="luffy-chat-header">
                             <div className="luffy-header-info">
-                                <div className="luffy-avatar">
-                                    <Shield size={20} />
-                                </div>
+                                <img
+                                    src="/luffy-avatar.png"
+                                    alt="Luffy"
+                                    className="luffy-avatar-img"
+                                />
                                 <div className="luffy-header-text">
                                     <h3>
                                         Luffy Security

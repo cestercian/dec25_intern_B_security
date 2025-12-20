@@ -1,25 +1,33 @@
-/* Luffy Chatbot - MailShieldAI Theme */
+/* Luffy Chatbot - MailShieldAI Dark Theme */
 
 /* ============================================
    CSS Custom Properties for Chatbot
    ============================================ */
 :root {
-  /* MailShieldAI Theme Colors (matching project primary) */
-  --luffy-primary: oklch(0.58 0.24 264);
-  --luffy-primary-glow: oklch(0.52 0.22 264);
-  --luffy-secondary: oklch(0.48 0.24 264);
-  --luffy-accent: oklch(0.65 0.20 280);
-  --luffy-red-alert: oklch(0.58 0.24 27);
-  --luffy-green-safe: oklch(0.65 0.18 162);
+  /* Dark Blue Theme Colors (matching project blue buttons) */
+  --luffy-primary: #3b82f6;
+  --luffy-primary-dark: #2563eb;
+  --luffy-primary-glow: rgba(59, 130, 246, 0.5);
+  --luffy-accent: #60a5fa;
+  --luffy-red-alert: #ef4444;
+  --luffy-green-safe: #22c55e;
+  --luffy-yellow: #d4f542;
+
+  /* Dark Background */
+  --luffy-bg-dark: #0a0a0a;
+  --luffy-bg-card: #141414;
+  --luffy-bg-input: #1f1f1f;
+  --luffy-border: rgba(59, 130, 246, 0.3);
+  --luffy-text: #ffffff;
+  --luffy-text-muted: rgba(255, 255, 255, 0.6);
 
   /* Glassmorphism */
-  --luffy-glass-bg: rgba(22, 22, 30, 0.92);
-  --luffy-glass-border: rgba(139, 92, 246, 0.25);
+  --luffy-glass-bg: rgba(10, 10, 10, 0.95);
+  --luffy-glass-border: rgba(59, 130, 246, 0.2);
   --luffy-glass-blur: 20px;
 
   /* Gradients */
-  --luffy-gradient: linear-gradient(135deg, var(--luffy-primary) 0%, var(--luffy-secondary) 50%, var(--luffy-accent) 100%);
-  --luffy-gradient-subtle: linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(99, 102, 241, 0.05) 100%);
+  --luffy-gradient: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
 }
 
 /* ============================================
@@ -41,11 +49,10 @@
   height: 64px;
   border-radius: 50%;
   background: var(--luffy-gradient);
-  border: 2px solid var(--luffy-glass-border);
+  border: 2px solid var(--luffy-border);
   box-shadow:
-    0 0 20px rgba(139, 92, 246, 0.4),
-    0 0 40px rgba(139, 92, 246, 0.2),
-    0 8px 32px rgba(0, 0, 0, 0.4);
+    0 0 20px var(--luffy-primary-glow),
+    0 8px 32px rgba(0, 0, 0, 0.6);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -70,9 +77,12 @@
 .luffy-fab:hover {
   transform: scale(1.1);
   box-shadow:
-    0 0 30px rgba(139, 92, 246, 0.6),
-    0 0 60px rgba(139, 92, 246, 0.3),
-    0 12px 40px rgba(0, 0, 0, 0.5);
+    0 0 30px var(--luffy-primary-glow),
+    0 12px 40px rgba(0, 0, 0, 0.7);
+}
+
+.luffy-fab:hover::before {
+  opacity: 0.6;
 }
 
 .luffy-fab:hover::before {
@@ -150,22 +160,26 @@
    Chat Window
    ============================================ */
 .luffy-chat-window {
-  width: 420px;
-  height: 600px;
+  width: 400px;
+  height: 550px;
   max-height: calc(100vh - 120px);
-  background: var(--luffy-glass-bg);
-  backdrop-filter: blur(var(--luffy-glass-blur));
-  -webkit-backdrop-filter: blur(var(--luffy-glass-blur));
-  border: 1px solid var(--luffy-glass-border);
-  border-radius: 24px;
-  box-shadow:
-    0 0 40px rgba(139, 92, 246, 0.15),
-    0 25px 50px rgba(0, 0, 0, 0.5),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  background: var(--luffy-bg-dark);
+  border: 1px solid var(--luffy-border);
+  border-radius: 16px;
+  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.8);
   display: flex;
   flex-direction: column;
   overflow: hidden;
   position: relative;
+}
+
+/* Avatar image styling */
+.luffy-avatar-img {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--luffy-border);
 }
 
 /* Neon border animation */
@@ -200,9 +214,9 @@
    Chat Header
    ============================================ */
 .luffy-chat-header {
-  padding: 16px 20px;
-  background: linear-gradient(180deg, rgba(139, 92, 246, 0.1) 0%, transparent 100%);
-  border-bottom: 1px solid var(--luffy-glass-border);
+  padding: 14px 16px;
+  background: var(--luffy-bg-card);
+  border-bottom: 1px solid var(--luffy-border);
   display: flex;
   align-items: center;
   justify-content: space-between;
