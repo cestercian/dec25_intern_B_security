@@ -6,6 +6,7 @@ import logging
 import os
 import sys
 import uuid
+from datetime import datetime, timezone
 from typing import Optional
 
 from dotenv import load_dotenv
@@ -20,7 +21,7 @@ from sqlmodel import SQLModel, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from database import get_session, init_db
-from models import EmailEvent, EmailStatus, RiskTier, User
+from models import EmailEvent, EmailStatus, RiskTier, ThreatCategory, User
 
 load_dotenv()
 
@@ -140,8 +141,93 @@ def _extract_bearer_token(authorization: str | None) -> str:
     return authorization.split(" ", 1)[1]
 
 
-def fetch_gmail_messages(access_token: str, limit: int = 10) -> list[dict]:
-    """Fetch emails from Gmail API using the provided access token."""
+def _parse_auth_results(auth_results: str) -> dict[str, str]:
+    """Parse Authentication-Results header to extract SPF, DKIM, DMARC status."""
+    result = {"spf": None, "dkim": None, "dmarc": None}
+    
+    if not auth_results:
+        return result
+    
+    auth_lower = auth_results.lower()
+    
+    # Parse SPF
+    if "spf=pass" in auth_lower:
+        result["spf"] = "PASS"
+    elif "spf=fail" in auth_lower or "spf=softfail" in auth_lower:
+        result["spf"] = "FAIL"
+    elif "spf=neutral" in auth_lower:
+        result["spf"] = "NEUTRAL"
+    elif "spf=none" in auth_lower:
+        result["spf"] = "NONE"
+    
+    # Parse DKIM
+    if "dkim=pass" in auth_lower:
+        result["dkim"] = "PASS"
+    elif "dkim=fail" in auth_lower:
+        result["dkim"] = "FAIL"
+    elif "dkim=neutral" in auth_lower:
+        result["dkim"] = "NEUTRAL"
+    elif "dkim=none" in auth_lower:
+        result["dkim"] = "NONE"
+    
+    # Parse DMARC
+    if "dmarc=pass" in auth_lower:
+        result["dmarc"] = "PASS"
+    elif "dmarc=fail" in auth_lower:
+        result["dmarc"] = "FAIL"
+    elif "dmarc=none" in auth_lower:
+        result["dmarc"] = "NONE"
+    
+    return result
+
+
+def _extract_sender_ip(received_headers: list[str]) -> str | None:
+    """Extract sender IP from Received headers."""
+    import re
+    
+    for received in received_headers:
+        # Look for IP patterns in square brackets
+        ip_match = re.search(r'\[(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\]', received)
+        if ip_match:
+            return ip_match.group(1)
+    return None
+
+
+def _extract_attachments(payload: dict) -> str | None:
+    """Extract attachment filenames from email payload."""
+    attachments = []
+    
+    def walk_parts(parts):
+        for part in parts:
+            filename = part.get("filename")
+            if filename:
+                attachments.append(filename)
+            if "parts" in part:
+                walk_parts(part["parts"])
+    
+    if "parts" in payload:
+        walk_parts(payload["parts"])
+    
+    return ", ".join(attachments) if attachments else None
+
+
+def _parse_email_date(date_str: str) -> datetime | None:
+    """Parse email Date header to datetime."""
+    from email.utils import parsedate_to_datetime
+    
+    if not date_str:
+        return None
+    
+    try:
+        dt = parsedate_to_datetime(date_str)
+        # Convert to naive UTC datetime for PostgreSQL
+        return dt.astimezone(timezone.utc).replace(tzinfo=None)
+    except Exception:
+        return None
+
+
+def fetch_gmail_messages(access_token: str, limit: int = 20) -> list[dict]:
+    """Fetch emails from Gmail API using the provided access token with full metadata."""
     try:
         creds = Credentials(token=access_token)
         service = build("gmail", "v1", credentials=creds)
@@ -152,23 +238,54 @@ def fetch_gmail_messages(access_token: str, limit: int = 10) -> list[dict]:
 
         email_data = []
         for msg in messages:
-            # Get full message details
-            msg_detail = service.users().messages().get(userId="me", id=msg["id"], format="full").execute()
-            
-            headers = msg_detail.get("payload", {}).get("headers", [])
-            subject = next((h["value"] for h in headers if h["name"] == "Subject"), "(No Subject)")
-            sender = next((h["value"] for h in headers if h["name"] == "From"), "Unknown")
-            recipient = next((h["value"] for h in headers if h["name"] == "To"), "Unknown")
-            snippet = msg_detail.get("snippet", "")
+            try:
+                # Get full message details
+                msg_detail = service.users().messages().get(userId="me", id=msg["id"], format="full").execute()
+                
+                payload = msg_detail.get("payload", {})
+                headers = payload.get("headers", [])
+                
+                # Create a dict for easier header lookup
+                headers_dict = {h["name"].lower(): h["value"] for h in headers}
+                
+                # Essential fields
+                subject = headers_dict.get("subject", "(No Subject)")
+                sender = headers_dict.get("from", "Unknown")
+                recipient = headers_dict.get("to", "Unknown")
+                snippet = msg_detail.get("snippet", "")
+                
+                # Timestamp
+                date_str = headers_dict.get("date")
+                received_at = _parse_email_date(date_str)
+                
+                # Authentication status
+                auth_results = headers_dict.get("authentication-results", "")
+                auth_status = _parse_auth_results(auth_results)
+                
+                # Sender IP from Received headers
+                received_headers = [h["value"] for h in headers if h["name"].lower() == "received"]
+                sender_ip = _extract_sender_ip(received_headers)
+                
+                # Attachments
+                attachment_info = _extract_attachments(payload)
 
-            email_data.append({
-                "sender": sender,
-                "recipient": recipient,
-                "subject": subject,
-                "body_preview": snippet,
-                "message_id": msg["id"],
-                "status": EmailStatus.pending
-            })
+                email_data.append({
+                    "sender": sender,
+                    "recipient": recipient,
+                    "subject": subject,
+                    "body_preview": snippet,
+                    "message_id": msg["id"],
+                    "received_at": received_at,
+                    "spf_status": auth_status["spf"],
+                    "dkim_status": auth_status["dkim"],
+                    "dmarc_status": auth_status["dmarc"],
+                    "sender_ip": sender_ip,
+                    "attachment_info": attachment_info,
+                    "status": EmailStatus.pending,
+                })
+            except Exception as e:
+                logger.warning(f"Failed to parse message {msg['id']}: {e}")
+                continue
             
         return email_data
     except Exception as e:
@@ -228,10 +345,24 @@ class EmailRead(SQLModel):
     recipient: str
     subject: str
     body_preview: Optional[str]
+    received_at: Optional[datetime] = None
+    
+    # Threat Intelligence
+    threat_category: Optional[ThreatCategory] = None
+    detection_reason: Optional[str] = None
+    
+    # Security Metadata
+    spf_status: Optional[str] = None
+    dkim_status: Optional[str] = None
+    dmarc_status: Optional[str] = None
+    sender_ip: Optional[str] = None
+    attachment_info: Optional[str] = None
+    
+    # Processing
     status: EmailStatus
-    risk_score: Optional[int]
-    risk_tier: Optional[RiskTier]
-    analysis_result: Optional[dict]
+    risk_score: Optional[int] = None
+    risk_tier: Optional[RiskTier] = None
+    analysis_result: Optional[dict] = None
 
 
 class UserRead(SQLModel):
@@ -302,9 +433,9 @@ async def sync_emails(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> dict:
-    """Sync emails from Gmail."""
+    """Sync emails from Gmail with full metadata."""
     try:
-        # Fetch recent messages
+        # Fetch recent messages with full metadata
         gmail_emails = fetch_gmail_messages(x_google_token, limit=20)
         
         count = 0
@@ -324,6 +455,12 @@ async def sync_emails(
                 subject=g_email["subject"],
                 body_preview=g_email["body_preview"],
                 message_id=msg_id,
+                received_at=g_email.get("received_at"),
+                spf_status=g_email.get("spf_status"),
+                dkim_status=g_email.get("dkim_status"),
+                dmarc_status=g_email.get("dmarc_status"),
+                sender_ip=g_email.get("sender_ip"),
+                attachment_info=g_email.get("attachment_info"),
                 status=EmailStatus.pending,
             )
             session.add(email)
