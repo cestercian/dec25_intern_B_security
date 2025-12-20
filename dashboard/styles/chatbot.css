@@ -11,12 +11,12 @@
   --luffy-purple: oklch(0.55 0.22 280);
   --luffy-red-alert: oklch(0.60 0.25 25);
   --luffy-green-safe: oklch(0.65 0.20 145);
-  
+
   /* Glassmorphism */
   --luffy-glass-bg: rgba(15, 23, 42, 0.85);
   --luffy-glass-border: rgba(100, 200, 255, 0.2);
   --luffy-glass-blur: 20px;
-  
+
   /* Gradients */
   --luffy-gradient: linear-gradient(135deg, var(--luffy-cyan) 0%, var(--luffy-blue) 50%, var(--luffy-purple) 100%);
   --luffy-gradient-subtle: linear-gradient(135deg, rgba(0, 200, 255, 0.1) 0%, rgba(100, 150, 255, 0.05) 100%);
@@ -42,7 +42,7 @@
   border-radius: 50%;
   background: var(--luffy-gradient);
   border: 2px solid var(--luffy-glass-border);
-  box-shadow: 
+  box-shadow:
     0 0 20px rgba(0, 200, 255, 0.4),
     0 0 40px rgba(0, 200, 255, 0.2),
     0 8px 32px rgba(0, 0, 0, 0.4);
@@ -69,7 +69,7 @@
 
 .luffy-fab:hover {
   transform: scale(1.1);
-  box-shadow: 
+  box-shadow:
     0 0 30px rgba(0, 200, 255, 0.6),
     0 0 60px rgba(0, 200, 255, 0.3),
     0 12px 40px rgba(0, 0, 0, 0.5);
@@ -98,7 +98,7 @@
   -webkit-backdrop-filter: blur(var(--luffy-glass-blur));
   border: 1px solid var(--luffy-glass-border);
   border-radius: 24px;
-  box-shadow: 
+  box-shadow:
     0 0 40px rgba(0, 200, 255, 0.15),
     0 25px 50px rgba(0, 0, 0, 0.5),
     inset 0 1px 0 rgba(255, 255, 255, 0.1);
@@ -125,8 +125,15 @@
 }
 
 @keyframes neon-pulse {
-  0%, 100% { opacity: 0.3; }
-  50% { opacity: 0.7; }
+
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+
+  50% {
+    opacity: 0.7;
+  }
 }
 
 /* ============================================
@@ -220,8 +227,17 @@
 }
 
 @keyframes alert-pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.7; transform: scale(1.2); }
+
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.7;
+    transform: scale(1.2);
+  }
 }
 
 /* ============================================
@@ -268,6 +284,7 @@
     opacity: 0;
     transform: translateY(10px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -382,8 +399,18 @@
 }
 
 @keyframes typing-bounce {
-  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
-  30% { transform: translateY(-8px); opacity: 1; }
+
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+
+  30% {
+    transform: translateY(-8px);
+    opacity: 1;
+  }
 }
 
 /* ============================================
@@ -530,4 +557,174 @@
 .luffy-welcome-subtitle {
   color: rgba(255, 255, 255, 0.6);
   font-size: 14px;
+}
+
+/* ============================================
+   Accessibility & Focus States
+   ============================================ */
+.luffy-fab:focus-visible,
+.luffy-close-btn:focus-visible,
+.luffy-chip:focus-visible,
+.luffy-send-btn:focus-visible,
+.luffy-input:focus-visible {
+  outline: 2px solid var(--luffy-cyan);
+  outline-offset: 2px;
+}
+
+/* Reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+
+  .luffy-fab,
+  .luffy-chat-window,
+  .luffy-chip,
+  .luffy-send-btn,
+  .luffy-message {
+    animation: none !important;
+    transition: opacity 0.1s ease !important;
+  }
+
+  .luffy-typing-indicator span {
+    animation: none !important;
+  }
+
+  .luffy-chat-window::before {
+    animation: none !important;
+    opacity: 0.5;
+  }
+
+  .luffy-status-indicator.alert {
+    animation: none !important;
+  }
+}
+
+/* ============================================
+   Enhanced Hover States
+   ============================================ */
+.luffy-chip:active {
+  transform: scale(0.95);
+}
+
+.luffy-send-btn:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+/* ============================================
+   Threat Level Colors in Messages
+   ============================================ */
+.luffy-message-bubble .threat-critical {
+  color: #ef4444;
+  font-weight: 600;
+}
+
+.luffy-message-bubble .threat-high {
+  color: #f97316;
+  font-weight: 600;
+}
+
+.luffy-message-bubble .threat-medium {
+  color: #eab308;
+}
+
+.luffy-message-bubble .threat-safe {
+  color: #10b981;
+}
+
+/* ============================================
+   Japanese Text Styling
+   ============================================ */
+.luffy-message-bubble .ja-text {
+  font-size: 0.95em;
+  line-height: 1.7;
+}
+
+/* ============================================
+   Loading Shimmer Effect
+   ============================================ */
+.luffy-shimmer {
+  background: linear-gradient(90deg,
+      rgba(255, 255, 255, 0.05) 0%,
+      rgba(0, 200, 255, 0.1) 50%,
+      rgba(255, 255, 255, 0.05) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* ============================================
+   Notification Badge
+   ============================================ */
+.luffy-notification-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 20px;
+  height: 20px;
+  border-radius: 10px;
+  background: #ef4444;
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.4);
+  animation: badge-bounce 0.5s ease-out;
+}
+
+@keyframes badge-bounce {
+  0% {
+    transform: scale(0);
+  }
+
+  50% {
+    transform: scale(1.2);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* ============================================
+   Scan Line Effect (Neo-Tokyo)
+   ============================================ */
+.luffy-chat-window.scanning::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--luffy-cyan), transparent);
+  animation: scan-line 2s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes scan-line {
+  0% {
+    top: 0;
+    opacity: 0;
+  }
+
+  10% {
+    opacity: 1;
+  }
+
+  90% {
+    opacity: 1;
+  }
+
+  100% {
+    top: 100%;
+    opacity: 0;
+  }
 }
