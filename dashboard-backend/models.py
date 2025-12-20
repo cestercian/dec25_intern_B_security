@@ -108,6 +108,5 @@ class EmailEvent(SQLModel, table=True):
     )
     updated_at: datetime = Field(
         default_factory=utc_now,
-        nullable=False,
         sa_column=Column(DateTime, default=utc_now, onupdate=utc_now, nullable=False),
     )
