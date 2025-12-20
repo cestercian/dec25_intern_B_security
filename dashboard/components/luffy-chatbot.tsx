@@ -26,36 +26,31 @@ interface ThreatSummary {
     recentThreats: number
 }
 
-// Quick action chips data
+// Quick action chips data - Professional English labels
 const quickActions = [
-    { label: "過去24時間のスキャン", englishLabel: "Scan last 24h", query: "Show me any threats detected in the last 24 hours" },
-    { label: "危険なメール", englishLabel: "Dangerous emails", query: "What are the most dangerous emails in my inbox?" },
-    { label: "フィッシング検出", englishLabel: "Phishing detected", query: "Did I receive any phishing emails recently?" },
-    { label: "セキュリティ概要", englishLabel: "Security summary", query: "Give me a summary of my email security status" },
+    { label: "Last 24 Hours", query: "Show me any threats detected in the last 24 hours" },
+    { label: "High Risk Emails", query: "What are the most dangerous emails in my inbox?" },
+    { label: "Phishing Check", query: "Did I receive any phishing emails recently?" },
+    { label: "Security Summary", query: "Give me a summary of my email security status" },
 ]
 
-// Welcome message
+// Welcome message - Professional and concise
 const WELCOME_MESSAGE: Message = {
     id: "welcome",
     role: "assistant",
-    content: `# Welcome! / ようこそ! 👋
+    content: `## 👋 Welcome to Luffy Security Assistant
 
-I'm **Luffy (ルフィ)**, your AI Security Guardian.
+I'm your **AI-powered email security guardian**. I can help you:
 
-I can help you analyze your emails for security threats like phishing, malware, and suspicious activity.
+- 🔍 Analyze emails for **phishing** and **malware** threats
+- 📊 Review your inbox **security status**
+- ⚠️ Identify **high-risk** messages
+- 💡 Provide **security recommendations**
 
----
-
-# ようこそ! 👋
-
-私は**Luffy (ルフィ)**、あなたのAIセキュリティガーディアンです。
-
-フィッシング、マルウェア、不審なアクティビティなど、メールのセキュリティ脅威を分析するお手伝いをします。
-
-**Try asking me / 質問してみてください:**
-- "Did I get any phishing emails today?"
-- "最も危険なメールを見せて"
-- "Are there any vulnerabilities in my inbox?"`,
+**Try asking:**
+- "Do I have any phishing emails?"
+- "What's my security status?"
+- "Show me dangerous emails"`,
     timestamp: new Date(),
 }
 
@@ -214,16 +209,18 @@ export function LuffyChatbot() {
                         {/* Header */}
                         <div className="luffy-chat-header">
                             <div className="luffy-header-info">
-                                <div className="luffy-avatar">L</div>
+                                <div className="luffy-avatar">
+                                    <Shield size={20} />
+                                </div>
                                 <div className="luffy-header-text">
                                     <h3>
-                                        Luffy ルフィ
+                                        Luffy Security
                                         <span className={`luffy-status-indicator ${hasAlert ? "alert" : "safe"}`} />
                                     </h3>
                                     <p>
                                         {threatSummary
-                                            ? `${threatSummary.total} emails • ${threatSummary.recentThreats} recent threats`
-                                            : "AI Security Guardian"}
+                                            ? `${threatSummary.total} emails analyzed • ${threatSummary.recentThreats} threats`
+                                            : "AI Security Assistant"}
                                     </p>
                                 </div>
                             </div>
@@ -281,7 +278,6 @@ export function LuffyChatbot() {
                                         className="luffy-chip"
                                         onClick={() => handleQuickAction(action.query)}
                                         disabled={isLoading}
-                                        title={action.englishLabel}
                                     >
                                         {action.label}
                                     </button>
@@ -296,7 +292,7 @@ export function LuffyChatbot() {
                                     ref={inputRef}
                                     type="text"
                                     className="luffy-input"
-                                    placeholder="Ask about email security... / メールセキュリティについて質問..."
+                                    placeholder="Ask about email security..."
                                     value={inputValue}
                                     onChange={(e) => setInputValue(e.target.value)}
                                     disabled={isLoading}
@@ -313,36 +309,54 @@ export function LuffyChatbot() {
                         </form>
                     </motion.div>
                 ) : (
-                    // FAB
-                    <motion.button
-                        key="fab"
-                        initial={{ scale: 0 }}
-                        animate={{ scale: 1 }}
-                        exit={{ scale: 0 }}
-                        whileHover={{ scale: 1.1 }}
-                        whileTap={{ scale: 0.95 }}
-                        transition={{ type: "spring", damping: 20, stiffness: 300 }}
-                        className="luffy-fab"
-                        onClick={() => setIsOpen(true)}
-                        aria-label="Open Luffy chatbot"
-                    >
-                        {hasAlert ? (
-                            <AlertTriangle className="luffy-fab-icon" size={28} />
-                        ) : (
-                            <Shield className="luffy-fab-icon" size={28} />
-                        )}
-                        {hasAlert && (
-                            <motion.span
-                                initial={{ scale: 0 }}
-                                animate={{ scale: 1 }}
-                                className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center text-xs font-bold text-white"
-                            >
-                                !
-                            </motion.span>
-                        )}
-                    </motion.button>
+                    // FAB with tooltip
+                    <div className="relative">
+                        {/* Tooltip popup */}
+                        <motion.div
+                            initial={{ opacity: 0, x: 10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: 1, duration: 0.3 }}
+                            className="luffy-tooltip"
+                        >
+                            <div className="luffy-tooltip-content">
+                                <p>🛡️ <strong>Scan your emails for threats</strong></p>
+                                <span>Click to chat with your inbox</span>
+                            </div>
+                            <div className="luffy-tooltip-arrow" />
+                        </motion.div>
+
+                        {/* FAB Button */}
+                        <motion.button
+                            key="fab"
+                            initial={{ scale: 0 }}
+                            animate={{ scale: 1 }}
+                            exit={{ scale: 0 }}
+                            whileHover={{ scale: 1.1 }}
+                            whileTap={{ scale: 0.95 }}
+                            transition={{ type: "spring", damping: 20, stiffness: 300 }}
+                            className="luffy-fab"
+                            onClick={() => setIsOpen(true)}
+                            aria-label="Open Luffy chatbot"
+                        >
+                            {hasAlert ? (
+                                <AlertTriangle className="luffy-fab-icon" size={28} />
+                            ) : (
+                                <Shield className="luffy-fab-icon" size={28} />
+                            )}
+                            {hasAlert && (
+                                <motion.span
+                                    initial={{ scale: 0 }}
+                                    animate={{ scale: 1 }}
+                                    className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center text-xs font-bold text-white"
+                                >
+                                    !
+                                </motion.span>
+                            )}
+                        </motion.button>
+                    </div>
                 )}
             </AnimatePresence>
         </div>
     )
 }
+
