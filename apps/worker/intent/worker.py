@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 import random
 from datetime import datetime, timezone
 
@@ -9,16 +8,10 @@ from fastapi import FastAPI
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-# Support both module import (for tests) and direct execution (for Docker)
-try:
-    from .database import get_session, init_db
-    from .models import EmailEvent, EmailStatus, RiskTier
-except ImportError:
-    from database import get_session, init_db
-    from models import EmailEvent, EmailStatus, RiskTier
-
-POLL_INTERVAL_SECONDS = int(os.getenv("POLL_INTERVAL_SECONDS", "5"))
-BATCH_LIMIT = int(os.getenv("BATCH_LIMIT", "10"))
+from packages.shared.database import get_session, init_db
+from packages.shared.constants import EmailStatus, RiskTier
+from packages.shared.models import EmailEvent
+from packages.shared.queue import get_redis_client, EMAIL_INTENT_QUEUE
 
 
 def classify_risk(score: int) -> RiskTier:
@@ -38,15 +31,7 @@ def build_dummy_analysis(score: int) -> dict:
     }
 
 
-async def fetch_pending(session: AsyncSession) -> list[EmailEvent]:
-    result = await session.exec(
-        select(EmailEvent).where(EmailEvent.status == EmailStatus.PENDING).limit(BATCH_LIMIT)
-    )
-    return result.all()
-
-
 async def process_email(session: AsyncSession, email: EmailEvent) -> None:
-    email.status = EmailStatus.PROCESSING
     session.add(email)
     await session.commit()
     await session.refresh(email)
@@ -70,28 +55,53 @@ async def process_email(session: AsyncSession, email: EmailEvent) -> None:
 
 
 async def run_loop() -> None:
-    """Main worker loop that polls for pending emails and processes them.
+    """Main worker loop that pops emails from Redis queue and processes them.
     
-    Each iteration acquires a fresh session to avoid stale reads,
-    connection timeouts, and identity-map bloat from long-lived sessions.
+    Uses BLPOP to block until an email ID is available.
     """
     await init_db()
+    redis = await get_redis_client()
+    print(f"Worker started. Listening on {EMAIL_INTENT_QUEUE}...")
+
     while True:
         try:
-            # Acquire a fresh session for each poll iteration
-            async for session in get_session():
-                pending = await fetch_pending(session)
-                if not pending:
-                    break  # Exit session context, sleep, then get new session
+            # Block until an item is available
+            # blpop returns (queue_name, element) or None if timeout
+            result = await redis.blpop(EMAIL_INTENT_QUEUE, timeout=5)
+            
+            if not result:
+                continue
                 
-                for email in pending:
+            queue_name, email_id_str = result
+            
+            # Process the email in a fresh session
+            async for session in get_session():
+                try:
+                    # Find the email
+                    query = select(EmailEvent).where(EmailEvent.id == email_id_str)
+                    result = await session.exec(query)
+                    email = result.first()
+                    
+                    if not email:
+                        print(f"Email {email_id_str} not found in DB.")
+                        break # Exit session
+                    
+                    if email.status != EmailStatus.PENDING:
+                        print(f"Email {email_id_str} is not PENDING (status={email.status}). Skipping.")
+                        break
+                        
+                    print(f"Processing email ID: {email_id_str}")
                     await process_email(session, email)
-                break  # Exit session context after processing batch
+                    
+                except Exception as inner_e:
+                    print(f"Error processing email {email_id_str}: {inner_e}")
+                
+                break # Exit session context manager
+                    
         except Exception as e:  # noqa: BLE001
-            # Log error but continue running - session will be cleaned up
-            print(f"Worker error: {e}")
-        
-        await asyncio.sleep(POLL_INTERVAL_SECONDS)
+            # Log error but continue running
+            print(f"Worker loop error: {e}")
+            await asyncio.sleep(1)
 
 
 app = FastAPI()
