@@ -690,3 +690,257 @@ def fetch_gmail_messages(
         }
         for email in emails
     ]
+
+
+# =============================================================================
+# GMAIL WATCH SERVICE (PUB/SUB PUSH NOTIFICATIONS)
+# =============================================================================
+# Manages Gmail push notification subscriptions.
+# Each user must be subscribed individually to receive real-time updates.
+# Watches expire after ~7 days and must be renewed.
+# =============================================================================
+
+
+class WatchInfo(BaseModel):
+    """
+    Information about a Gmail watch subscription.
+    
+    Returned by the Gmail API when calling users().watch().
+    Must be stored in database to track watch expiration.
+    """
+    history_id: int = Field(description="Starting historyId for incremental sync")
+    expiration: int = Field(description="Unix timestamp (ms) when watch expires (~7 days)")
+    
+    @property
+    def expiration_datetime(self) -> datetime:
+        """Convert expiration to datetime for easier comparison."""
+        return datetime.fromtimestamp(self.expiration / 1000, tz=timezone.utc)
+    
+    @property
+    def is_expired(self) -> bool:
+        """Check if the watch has expired."""
+        return datetime.now(timezone.utc) >= self.expiration_datetime
+    
+    @property
+    def expires_soon(self) -> bool:
+        """Check if watch expires within 24 hours (should renew)."""
+        from datetime import timedelta
+        return datetime.now(timezone.utc) >= (self.expiration_datetime - timedelta(hours=24))
+
+
+class GmailWatchService:
+    """
+    Manages Gmail push notification subscriptions via Pub/Sub.
+    
+    How it works:
+    1. You create ONE Pub/Sub topic in your GCP project
+    2. Each user is subscribed to push notifications via watch()
+    3. When emails arrive, Gmail pushes to YOUR topic
+    4. Your worker receives the push and processes emails
+    
+    Watches expire after ~7 days and must be renewed.
+    
+    Usage:
+        watch_service = GmailWatchService(
+            access_token=user.access_token,
+            project_id="my-gcp-project"
+        )
+        
+        # Subscribe user after OAuth login
+        watch_info = watch_service.subscribe(topic_name="gmail-push")
+        save_to_db(user_id, watch_info.history_id, watch_info.expiration)
+        
+        # Renew before expiration (run daily via cron)
+        if watch_info.expires_soon:
+            watch_info = watch_service.subscribe(topic_name="gmail-push")
+        
+        # Unsubscribe when user disconnects
+        watch_service.unsubscribe()
+    """
+    
+    def __init__(
+        self,
+        access_token: str,
+        project_id: str,
+        timeout: float = 10.0,
+        trace_context: Optional[str] = None
+    ):
+        """
+        Initialize the Gmail Watch service.
+        
+        Args:
+            access_token: OAuth2 access token from user authentication
+            project_id: Your GCP project ID (for Pub/Sub topic path)
+            timeout: Socket timeout for API calls
+            trace_context: Cloud Trace context for distributed tracing
+        """
+        self.access_token = access_token
+        self.project_id = project_id
+        self.trace_context = trace_context
+        
+        socket.setdefaulttimeout(timeout)
+        
+        creds = Credentials(token=access_token)
+        self.service = build("gmail", "v1", credentials=creds)
+        
+        logger.info(
+            "GmailWatchService initialized",
+            extra={"project_id": project_id, "trace_context": trace_context}
+        )
+    
+    def subscribe(
+        self,
+        topic_name: str,
+        label_ids: Optional[list[str]] = None,
+        label_filter_behavior: str = "include"
+    ) -> WatchInfo:
+        """
+        Subscribe user's Gmail to push notifications.
+        
+        Call this:
+        - When user first connects their Gmail (after OAuth)
+        - Every 7 days to renew (before expiration)
+        
+        Args:
+            topic_name: Pub/Sub topic name (without project prefix)
+                        Example: "gmail-push" → "projects/my-project/topics/gmail-push"
+            label_ids: Labels to watch. Default ["INBOX"]. 
+                       Use ["INBOX", "SPAM"] to monitor spam too.
+            label_filter_behavior: "include" (only these labels) or 
+                                   "exclude" (all except these labels)
+        
+        Returns:
+            WatchInfo with historyId and expiration timestamp
+        
+        Raises:
+            HttpError: If subscription fails (usually permissions issue)
+        """
+        if label_ids is None:
+            label_ids = ["INBOX"]
+        
+        full_topic_name = f"projects/{self.project_id}/topics/{topic_name}"
+        
+        logger.info(
+            f"Subscribing to Gmail push notifications",
+            extra={"topic": full_topic_name, "label_ids": label_ids}
+        )
+        
+        try:
+            response = (
+                self.service.users()
+                .watch(userId="me", body={
+                    "topicName": full_topic_name,
+                    "labelIds": label_ids,
+                    "labelFilterBehavior": label_filter_behavior,
+                })
+                .execute()
+            )
+            
+            watch_info = WatchInfo(
+                history_id=int(response["historyId"]),
+                expiration=int(response["expiration"])
+            )
+            
+            logger.info(
+                f"Gmail watch established",
+                extra={"history_id": watch_info.history_id, "expires": watch_info.expiration_datetime.isoformat()}
+            )
+            
+            return watch_info
+            
+        except HttpError as e:
+            if e.resp.status == 403:
+                logger.error(
+                    "Permission denied. Grant Pub/Sub publish permission: "
+                    "gcloud pubsub topics add-iam-policy-binding <topic> "
+                    "--member='serviceAccount:gmail-api-push@system.gserviceaccount.com' "
+                    "--role='roles/pubsub.publisher'"
+                )
+            raise
+    
+    def unsubscribe(self) -> None:
+        """
+        Stop watching user's Gmail (unsubscribe from push notifications).
+        
+        Call this when user disconnects Gmail or deletes account.
+        """
+        logger.info("Stopping Gmail watch", extra={"trace_context": self.trace_context})
+        
+        try:
+            self.service.users().stop(userId="me").execute()
+            logger.info("Gmail watch stopped successfully")
+        except HttpError as e:
+            if e.resp.status == 400:
+                logger.info("No active watch to stop")
+            else:
+                raise
+    
+    def get_profile(self) -> dict:
+        """
+        Get user's Gmail profile (email address, history ID).
+        
+        Returns:
+            Dict with emailAddress, messagesTotal, threadsTotal, historyId
+        """
+        try:
+            profile = self.service.users().getProfile(userId="me").execute()
+            return {
+                "email_address": profile.get("emailAddress"),
+                "messages_total": profile.get("messagesTotal", 0),
+                "threads_total": profile.get("threadsTotal", 0),
+                "history_id": int(profile.get("historyId", 0)),
+            }
+        except HttpError as e:
+            logger.error(f"Failed to get Gmail profile: {e}")
+            raise
+
+
+async def setup_gmail_push_for_user(
+    access_token: str,
+    project_id: str,
+    topic_name: str,
+    label_ids: Optional[list[str]] = None,
+) -> dict:
+    """
+    Complete setup for Gmail push notifications for a user.
+    
+    Call this after user completes OAuth authentication.
+    Returns all info needed to store in database.
+    
+    Args:
+        access_token: User's OAuth access token
+        project_id: Your GCP project ID
+        topic_name: Pub/Sub topic name (e.g., "gmail-push")
+        label_ids: Labels to watch (default: ["INBOX"])
+    
+    Returns:
+        Dict with user email, history_id, and watch expiration
+    
+    Example:
+        result = await setup_gmail_push_for_user(
+            access_token=tokens.access_token,
+            project_id="my-project",
+            topic_name="gmail-push"
+        )
+        
+        await db.update_user(
+            email=result["email_address"],
+            gmail_history_id=result["history_id"],
+            gmail_watch_expiration=result["expiration"]
+        )
+    """
+    watch_service = GmailWatchService(
+        access_token=access_token,
+        project_id=project_id
+    )
+    
+    profile = watch_service.get_profile()
+    watch_info = watch_service.subscribe(topic_name=topic_name, label_ids=label_ids)
+    
+    return {
+        "email_address": profile["email_address"],
+        "history_id": watch_info.history_id,
+        "expiration": watch_info.expiration,
+        "expiration_datetime": watch_info.expiration_datetime.isoformat(),
+        "expires_soon": watch_info.expires_soon,
+    }
