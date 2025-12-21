@@ -239,12 +239,7 @@ def fetch_gmail_messages(access_token: str, limit: int = 20) -> list[dict]:
         creds = Credentials(token=access_token)
         service = build("gmail", "v1", credentials=creds)
 
-<<<<<<< HEAD
-        # List messages
-        # List messages
-=======
         # List messages (include spam/trash for complete view)
->>>>>>> origin/main
         results = service.users().messages().list(userId="me", maxResults=limit, includeSpamTrash=True).execute()
         messages = results.get("messages", [])
 
@@ -254,31 +249,6 @@ def fetch_gmail_messages(access_token: str, limit: int = 20) -> list[dict]:
         email_data = []
 
         def callback(request_id, response, exception):
-<<<<<<< HEAD
-            if exception:
-                logger.error(f"Error fetching message {request_id}: {exception}")
-                return
-
-            headers = response.get("payload", {}).get("headers", [])
-            subject = next((h["value"] for h in headers if h["name"] == "Subject"), "(No Subject)")
-            sender = next((h["value"] for h in headers if h["name"] == "From"), "Unknown")
-            recipient = next((h["value"] for h in headers if h["name"] == "To"), "Unknown")
-            snippet = response.get("snippet", "")
-            
-            status = EmailStatus.pending
-            if "SPAM" in response.get("labelIds", []):
-                status = EmailStatus.spam
-                
-            email_data.append({
-                "sender": sender,
-                "recipient": recipient,
-                "subject": subject,
-                "body_preview": snippet,
-                "message_id": response["id"],
-                "status": status
-            })
-
-=======
             """Callback for batch request processing."""
             if exception:
                 logger.error(f"Error fetching message {request_id}: {exception}")
@@ -335,7 +305,6 @@ def fetch_gmail_messages(access_token: str, limit: int = 20) -> list[dict]:
                 logger.warning(f"Failed to parse message in batch callback: {e}")
 
         # Use batch request for better performance
->>>>>>> origin/main
         batch = service.new_batch_http_request(callback=callback)
         for msg in messages:
             batch.add(service.users().messages().get(userId="me", id=msg["id"], format="full"))
@@ -500,11 +469,7 @@ async def sync_emails(
     """Sync emails from Gmail with full metadata."""
     try:
         # Fetch recent messages in a thread pool to avoid blocking the event loop
-<<<<<<< HEAD
-        gmail_emails = await run_in_threadpool(fetch_gmail_messages, x_google_token, limit=20)
-=======
         gmail_emails = await run_in_threadpool(fetch_gmail_messages, x_google_token, 20)
->>>>>>> origin/main
         
         count = 0
         for g_email in gmail_emails:
