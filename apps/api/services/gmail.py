@@ -289,11 +289,11 @@ class GmailService:
             return email_data
 
         except HttpError as e:
-            logger.error(f'Gmail API error: {e}')
+            logger.exception(f"Gmail API error: {e}")
             raise
         except Exception as e:
-            logger.error(f'Failed to fetch Gmail messages: {e}')
-            return []
+            logger.exception(f"Failed to fetch Gmail messages: {e}")
+            raise
 
     def fetch_by_history(self, history_id: int) -> list[StructuredEmail]:
         """
