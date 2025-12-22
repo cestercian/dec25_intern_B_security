@@ -311,25 +311,34 @@ export function LandingPage() {
             </section>
 
             {/* Social Proof / Testimonials */}
-            <section id="testimonials" className="py-20 px-6 bg-gray-50">
+            <section id="testimonials" className="py-24 px-6 bg-gradient-to-b from-gray-50 to-white">
                 <div className="max-w-6xl mx-auto">
-                    <div className="text-center mb-12">
+                    <div className="text-center mb-16">
+                        <span className="inline-block px-4 py-1.5 bg-gray-100 text-gray-700 text-xs font-medium rounded-full mb-4">
+                            Loved by Teams
+                        </span>
                         <h2 className="landing-headline text-3xl md:text-4xl mb-4">Trusted by security-conscious teams</h2>
-                        <p className="landing-subheadline">See what people are saying about MailShieldAI</p>
+                        <p className="landing-subheadline max-w-lg mx-auto">See what people are saying about MailShieldAI</p>
                     </div>
 
                     {/* Masonry Grid */}
-                    <div className="columns-1 md:columns-2 lg:columns-3 gap-4 space-y-4">
+                    <div className="columns-1 md:columns-2 lg:columns-3 gap-5 space-y-5">
                         {testimonials.map((testimonial, index) => (
-                            <div key={index} className="testimonial-card break-inside-avoid">
-                                <div className="flex items-center gap-3 mb-3">
-                                    <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-sm font-medium text-gray-600">
-                                        {testimonial.avatar}
+                            <div key={index} className="testimonial-card break-inside-avoid group">
+                                <div className="flex items-start justify-between mb-4">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-11 h-11 rounded-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center text-sm font-semibold text-gray-700">
+                                            {testimonial.avatar}
+                                        </div>
+                                        <div>
+                                            <div className="text-sm font-semibold text-gray-900">{testimonial.name}</div>
+                                            <div className="text-xs text-gray-500">{testimonial.handle}</div>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <div className="text-sm font-medium text-gray-900">{testimonial.name}</div>
-                                        <div className="text-xs text-gray-500">{testimonial.handle}</div>
-                                    </div>
+                                    {/* X (Twitter) icon */}
+                                    <svg className="w-4 h-4 text-gray-400 group-hover:text-gray-600 transition-colors" viewBox="0 0 24 24" fill="currentColor">
+                                        <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                                    </svg>
                                 </div>
                                 <p className="text-sm text-gray-700 leading-relaxed">{testimonial.content}</p>
                             </div>
