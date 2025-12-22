@@ -104,6 +104,6 @@ async def health() -> dict:
 
 
 # Register Routers
-app.include_router(auth.router, prefix='/api', tags=['auth'])
+app.include_router(auth.router, prefix='/api/auth', tags=['auth'])
 app.include_router(emails.router, prefix='/api/emails', tags=['emails'])
 app.include_router(stats.router, prefix='/api', tags=['stats'])
