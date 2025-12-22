@@ -199,8 +199,12 @@ async def process_email(session: AsyncSession, email: EmailEvent) -> None:
         # Invoke LangGraph
         result = await intent_agent.ainvoke(state.dict())
 
-        email.intent = result["final_intent"]
-        email.intent_confidence = result["final_confidence"]
+        final_intent = result.get("final_intent")
+        final_confidence = result.get("final_confidence")
+
+        # Save to DB (convert Enum to string)
+        email.intent = final_intent.value if final_intent else None
+        email.intent_confidence = final_confidence
         email.intent_processed_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
         # Define base risk scores for intents
@@ -222,11 +226,12 @@ async def process_email(session: AsyncSession, email: EmailEvent) -> None:
             Intent.UNKNOWN: 30,
         }
 
-        if email.intent in RISK_MAPPING.keys():
-            base_score = RISK_MAPPING.get(email.intent, 30)
+        # Use the Enum object for logic lookup
+        if final_intent and final_intent in RISK_MAPPING:
+            base_score = RISK_MAPPING[final_intent]
             # Adjust score based on confidence
             # If low confidence, pull towards neutral (50), if high confidence, stay at base
-            confidence = email.intent_confidence or 0.5
+            confidence = final_confidence or 0.5
             risk_score = int(base_score * confidence + (50 * (1 - confidence)))
 
             email.risk_score = risk_score
@@ -236,18 +241,6 @@ async def process_email(session: AsyncSession, email: EmailEvent) -> None:
                 else (RiskTier.CAUTIOUS if risk_score < 80 else RiskTier.THREAT)
             )
 
-            email.status = EmailStatus.COMPLETED
-
-            session.add(email)
-            await session.commit()
-            await session.refresh(email)
-            return True
-
-        # If intent not in mapping, still mark as completed?
-        # Or maybe it's an error?
-        # For now, let's assume if we got an intent, we are good.
-        # But if we fall through, we should return True or False.
-        # Let's save as COMPLETED without risk score update if not in mapping.
         email.status = EmailStatus.COMPLETED
         
         # Apply Gmail label based on risk tier
