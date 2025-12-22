@@ -18,6 +18,15 @@ Rules:
 9. 'social_engineering' uses psychological manipulation to perform actions or divulge info.
 10. 'bec_fraud' (Business Email Compromise) is a fraudulent request for money or bank changes, often impersonating executives.
 11. 'reconnaissance' is probing for internal system info, organizational structure, or contact details.
+
+Identify specific indicators in the text, such as:
+- 'urgency_language' (e.g., "immediate action required")
+- 'suspicious_link' (e.g., mismatched domains, bit.ly)
+- 'financial_request' (e.g., wire transfer, gift cards)
+- 'impersonation' (claiming to be CEO/Admin)
+- 'generic_greeting' (e.g., "Dear Customer")
+- 'credential_request' (asking for passwords)
+- 'attachment' (mention of unexpected files)
 """
 
 SUBJECT_PROMPT = """Classify the intent of the following email subject:

@@ -201,10 +201,12 @@ async def process_email(session: AsyncSession, email: EmailEvent) -> None:
 
         final_intent = result.get("final_intent")
         final_confidence = result.get("final_confidence")
+        final_indicators = result.get("final_indicators")
 
         # Save to DB (convert Enum to string)
         email.intent = final_intent.value if final_intent else None
         email.intent_confidence = final_confidence
+        email.intent_indicators = final_indicators
         email.intent_processed_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
         # Define base risk scores for intents
