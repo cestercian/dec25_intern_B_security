@@ -22,7 +22,7 @@ from typing import Optional, Set, Literal
 
 from fastapi import FastAPI, BackgroundTasks, status
 from pydantic import BaseModel
-from pythonjsonlogger import jsonlogger
+from pythonjsonlogger import json as jsonlogger
 import google.auth
 from googleapiclient.discovery import build
 from dotenv import load_dotenv
