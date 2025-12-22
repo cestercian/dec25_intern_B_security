@@ -1,7 +1,8 @@
+import asyncio
 import logging
+import os
 import uuid
 from typing import Optional
-import os
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlmodel import select
@@ -17,7 +18,6 @@ from packages.shared.models import User, EmailEvent, EmailRead
 from packages.shared.queue import (
     get_redis_client,
     EMAIL_INTENT_QUEUE,
-    EMAIL_ANALYSIS_QUEUE,
 )
 from packages.shared.types import BackgroundSyncRequest
 
@@ -56,7 +56,17 @@ async def sync_emails(
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     """
-    Sync emails from Gmail using the new StructuredEmail pipeline.
+    Sync new messages from a user's Gmail mailbox and enqueue them for downstream processing.
+    
+    Fetches messages from Gmail using the provided Google access token, creates EmailEvent records for messages that are not already present, commits any new records to the database, and pushes their IDs to the intent worker queue.
+    
+    Parameters:
+        x_google_token (str): Google access token supplied in the X-Google-Token header.
+        user (User): Authenticated user (injected dependency).
+        session (AsyncSession): Database session (injected dependency).
+    
+    Returns:
+        dict: {"status": "synced", "new_messages": <int>} where `new_messages` is the count of newly created EmailEvent records.
     """
     try:
         # Fetch emails in a threadpool (Gmail SDK is blocking)
@@ -105,9 +115,10 @@ async def sync_emails(
         if count > 0:
             await session.commit()
 
-            # Push to analysis queue
+            # Push new emails to Intent worker queue for analysis
             redis = await get_redis_client()
-            await redis.rpush(EMAIL_ANALYSIS_QUEUE, *new_email_ids)
+            await redis.rpush(EMAIL_INTENT_QUEUE, *new_email_ids)
+            logger.info(f"Pushed {count} new emails to Intent worker queue")
 
         return {
             "status": "synced",

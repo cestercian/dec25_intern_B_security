@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 
 import { Shield, Mail, Settings, LayoutDashboard, Bell, ChevronDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -26,6 +26,15 @@ const navigation = [
   { name: "Settings", href: "/settings", icon: Settings },
 ]
 
+/**
+ * Renders the dashboard shell with a sidebar, top navigation bar, and main content area.
+ *
+ * Performs a one-time background email synchronization when session tokens become available
+ * and delays rendering of interactive dropdowns until after client mount to avoid hydration mismatches.
+ *
+ * @param children - The page content rendered inside the layout's main area
+ * @returns The dashboard layout element containing the sidebar, header, and main content
+ */
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const { data: session } = useSession()
@@ -37,9 +46,11 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     setMounted(true)
   }, [])
 
-  // Trigger background sync immediately when session is ready
+  // Trigger background sync ONCE when session is first ready
+  const syncedRef = useRef(false)
   useEffect(() => {
-    if (session?.accessToken && session?.idToken) {
+    if (session?.accessToken && session?.idToken && !syncedRef.current) {
+      syncedRef.current = true
       syncEmails(session.idToken, session.accessToken).catch((err) => 
         console.error("Background sync failed:", err)
       )

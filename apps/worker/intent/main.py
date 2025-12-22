@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import random
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
 from fastapi import FastAPI
@@ -23,6 +25,19 @@ def classify_risk(score: int) -> RiskTier:
 
 
 def build_dummy_analysis(score: int) -> dict:
+    """
+    Builds a synthetic analysis result for a given risk score.
+    
+    Parameters:
+        score (int): Risk score on a 0–100 scale used to derive confidence and threat classification.
+    
+    Returns:
+        dict: Analysis result with keys:
+            - indicators (list[str]): Fixed set of indicator strings.
+            - confidence (float): Confidence normalized to 0.0–1.0 and rounded to two decimals.
+            - threat_type (str): "phishing" when score >= 50, otherwise "info".
+            - analyzed_at (str): UTC ISO-8601 timestamp of when the analysis was generated.
+    """
     return {
         "indicators": ["suspicious_link", "urgency_language"],
         "confidence": round(min(1.0, max(0.0, score / 100)), 2),
@@ -31,7 +46,191 @@ def build_dummy_analysis(score: int) -> dict:
     }
 
 
+def _create_gmail_label_sync(service, label_name: str) -> str:
+    """
+    Ensure a Gmail label with the given name exists and return its label ID.
+    
+    Checks for an existing label with the provided name and creates it if missing.
+    Returns:
+    	Label ID string when successful, `None` on error or if creation/listing fails.
+    """
+    from googleapiclient.errors import HttpError
+    
+    # First, check if label already exists
+    try:
+        results = service.users().labels().list(userId='me').execute()
+        labels = results.get('labels', [])
+        for label in labels:
+            if label['name'] == label_name:
+                print(f"Label '{label_name}' already exists")
+                return label['id']
+    except HttpError as e:
+        print(f"Error listing labels: {e}")
+        return None
+    
+    # Label doesn't exist, create it
+    # Note: Gmail will auto-assign colors, custom colors require specific palette codes
+    label_config = {
+        "name": label_name,
+        "labelListVisibility": "labelShow",
+        "messageListVisibility": "show"
+    }
+    
+    try:
+        result = service.users().labels().create(userId='me', body=label_config).execute()
+        label_id = result.get('id')
+        print(f"✓ Created Gmail label '{label_name}' with ID: {label_id}")
+        return label_id
+    except HttpError as e:
+        print(f"Failed to create label '{label_name}': {e}")
+        return None
+
+
+async def create_gmail_label(service, label_name: str) -> str:
+    """
+    Ensure a Gmail label with the given name exists and return its identifier.
+    
+    Parameters:
+        label_name (str): The name of the Gmail label to ensure exists.
+    
+    Returns:
+        label_id (str | None): The Gmail label ID if found or created, `None` on failure.
+    """
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, _create_gmail_label_sync, service, label_name)
+
+
+async def get_fresh_access_token(refresh_token: str) -> str:
+    """
+    Obtain a fresh Gmail access token using a refresh token.
+    
+    Reads OAuth client ID and secret from AUTH_GOOGLE_ID and AUTH_GOOGLE_SECRET environment variables, refreshes OAuth2 credentials with the provided refresh token, and returns the new access token string.
+    
+    Parameters:
+        refresh_token (str): OAuth2 refresh token for the Google account.
+    
+    Returns:
+        access_token (str): A newly refreshed Gmail access token.
+    
+    Raises:
+        ValueError: If AUTH_GOOGLE_ID or AUTH_GOOGLE_SECRET is not set in the environment.
+    """
+    import os
+    from google.oauth2.credentials import Credentials
+    from google.auth.transport.requests import Request
+    
+    # Get OAuth credentials from environment
+    client_id = os.getenv('AUTH_GOOGLE_ID')
+    client_secret = os.getenv('AUTH_GOOGLE_SECRET')
+    
+    if not client_id or not client_secret:
+        raise ValueError("AUTH_GOOGLE_ID and AUTH_GOOGLE_SECRET must be set in environment")
+    
+    # Create credentials object with refresh token
+    creds = Credentials(
+        token=None,  # No access token yet
+        refresh_token=refresh_token,
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=client_id,
+        client_secret=client_secret,
+        scopes=['https://www.googleapis.com/auth/gmail.modify']
+    )
+    
+    # Refresh to get new access token
+    creds.refresh(Request())
+    
+    return creds.token
+
+
+async def apply_gmail_label(user_id: str, message_id: str, risk_tier: RiskTier) -> bool:
+    """
+    Apply a MailShieldAI Gmail label corresponding to the given risk tier to a user's message.
+    
+    Ensures the Gmail label exists (creates it if missing) and uses the user's refresh token to obtain a fresh access token before applying the label.
+    
+    Parameters:
+        user_id (str): ID of the user whose Gmail account will be used.
+        message_id (str): Gmail message ID to label.
+        risk_tier (RiskTier): Risk tier determining which MailShieldAI label to apply.
+    
+    Returns:
+        bool: `true` if the label was successfully applied, `false` otherwise.
+    """
+    from google.oauth2.credentials import Credentials
+    from googleapiclient.discovery import build
+    from googleapiclient.errors import HttpError
+    
+    # Map risk tier to Gmail label
+    label_mapping = {
+        RiskTier.SAFE: "MailShieldAI/SAFE",
+        RiskTier.CAUTIOUS: "MailShieldAI/CAUTIOUS",
+        RiskTier.THREAT: "MailShieldAI/THREAT"
+    }
+    label_name = label_mapping.get(risk_tier, "MailShieldAI/CAUTIOUS")
+    
+    try:
+        # Get user's refresh token from database
+        from packages.shared.models import User
+        query = select(User).where(User.id == user_id)
+        async for session in get_session():
+            result = await session.exec(query)
+            user = result.first()
+            
+            if not user or not user.refresh_token:
+                print(f"No refresh_token for user {user_id}, skipping label")
+                return False
+            
+            # Get fresh access token using refresh token
+            try:
+                access_token = await get_fresh_access_token(user.refresh_token)
+            except Exception as token_error:
+                print(f"Failed to refresh access token: {token_error}")
+                return False
+            
+            # Create Gmail service with fresh access token
+            creds = Credentials(token=access_token)
+            service = build('gmail', 'v1', credentials=creds)
+            
+            # Create or get label ID
+            label_id = await create_gmail_label(service, label_name)
+            if not label_id:
+                print(f"Failed to get/create label {label_name}")
+                return False
+            
+            # Apply the label
+            try:
+                service.users().messages().modify(
+                    userId='me',
+                    id=message_id,
+                    body={'addLabelIds': [label_id]}
+                ).execute()
+                print(f"✓ Applied Gmail label {label_name} to message {message_id}")
+                return True
+            except HttpError as e:
+                print(f"Failed to apply label: {e}")
+                return False
+            break
+    except Exception as e:
+        print(f"Failed to apply Gmail label: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
 async def process_email(session: AsyncSession, email: EmailEvent) -> None:
+    """
+    Persist the provided EmailEvent, perform a risk analysis update, and save the resulting state.
+    
+    This function:
+    - Persists the incoming EmailEvent to the database.
+    - Generates a synthetic risk_score and corresponding risk_tier and analysis_result, then updates the email's fields and sets its status to COMPLETED.
+    - If the email contains both a message_id and user_id, attempts to apply a Gmail label corresponding to the risk tier.
+    - On any processing error, sets the email status to FAILED and stores a minimal error analysis_result.
+    The updated EmailEvent is committed and refreshed before the function returns.
+    
+    Parameters:
+        email (EmailEvent): The email entity to persist, analyze, and update in-place.
+    """
     session.add(email)
     await session.commit()
     await session.refresh(email)
@@ -45,6 +244,11 @@ async def process_email(session: AsyncSession, email: EmailEvent) -> None:
         email.risk_tier = risk_tier
         email.analysis_result = analysis_result
         email.status = EmailStatus.COMPLETED
+        
+        # Apply Gmail label based on risk tier
+        if email.message_id and email.user_id:
+            await apply_gmail_label(str(email.user_id), email.message_id, risk_tier)
+        
     except Exception:  # noqa: BLE001
         email.status = EmailStatus.FAILED
         email.analysis_result = {"error": "processing_failed"}
@@ -55,9 +259,10 @@ async def process_email(session: AsyncSession, email: EmailEvent) -> None:
 
 
 async def run_loop() -> None:
-    """Main worker loop that pops emails from Redis queue and processes them.
+    """
+    Continuously reads email IDs from the Redis queue and processes matching EmailEvent records.
     
-    Uses BLPOP to block until an email ID is available.
+    Blocks waiting for items on EMAIL_INTENT_QUEUE, opens a fresh database session for each popped ID, loads the EmailEvent by ID, and invokes process_email when the event exists and its status is PENDING. Missing or non-pending events are logged and skipped. The loop logs unexpected errors, continues running, and retries after a short delay on outer-loop failures.
     """
     await init_db()
     redis = await get_redis_client()
@@ -104,24 +309,46 @@ async def run_loop() -> None:
             await asyncio.sleep(1)
 
 
-app = FastAPI()
+# Create lifespan context manager
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Manage the FastAPI application's lifespan by starting the background run_loop on startup and cancelling it on shutdown.
+    
+    Starts the run_loop background task when the application starts, logs a startup message, then cancels and awaits the task during shutdown, suppressing the CancelledError raised by task cancellation.
+    """
+    # Startup
+    task = asyncio.create_task(run_loop())
+    print("Intent worker background task started")
+    yield
+    # Shutdown
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+
+app = FastAPI(lifespan=lifespan)
 
 
 @app.get("/")
 async def health_check():
-    """Health check endpoint for Cloud Run."""
-    return {"status": "ok", "service": "agent-worker"}
-
-
-@app.on_event("startup")
-async def on_startup():
-    """Start the worker loop in the background."""
-    # Run the worker loop as a background task
-    asyncio.create_task(run_loop())
+    """
+    Health check endpoint for the service.
+    
+    Returns:
+        dict: A dictionary with keys `status` and `service`. `status` is `"ok"` when the service is healthy; `service` is the service identifier (`"intent-worker"`).
+    """
+    return {"status": "ok", "service": "intent-worker"}
 
 
 def main() -> None:
-    """Entry point for the worker service."""
+    """
+    Start the FastAPI worker service by launching the Uvicorn server.
+    
+    Reads the PORT environment variable (defaults to 8080) and runs the app on 0.0.0.0 at that port.
+    """
     port = int(os.getenv("PORT", "8080"))
     # Run uvicorn server
     import uvicorn

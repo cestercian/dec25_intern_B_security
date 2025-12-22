@@ -139,24 +139,30 @@ class GmailService:
         trace_context: Optional[str] = None,
     ):
         """
-        Initialize the Gmail service.
-
-        Args:
-            access_token: OAuth2 access token (optional if credentials provided)
-            credentials: Pre-built google.oauth2.credentials.Credentials object
-            timeout: Socket timeout for API calls (default 10s)
-            trace_context: Cloud Trace context for distributed tracing
+        Create and initialize the Gmail API client used by this service.
+        
+        Parameters:
+            access_token (Optional[str]): OAuth2 access token to use for API calls; used if `credentials` is not provided.
+            credentials (Optional[Credentials]): Pre-built google.oauth2.credentials.Credentials object to authenticate requests.
+            timeout (float): Socket timeout in seconds for API calls.
+            trace_context (Optional[str]): Optional trace context value attached to logs for distributed tracing.
+        
+        Raises:
+            ValueError: If neither `access_token` nor `credentials` is provided.
         """
         self.timeout = timeout
         self.trace_context = trace_context
 
+        # Set socket timeout globally for httplib2
+        socket.setdefaulttimeout(self.timeout)
+
         # Build the Gmail API service
-        http = httplib2.Http(timeout=self.timeout)
+        # Note: credentials and http are mutually exclusive in build()
         if credentials:
-            self.service = build("gmail", "v1", credentials=credentials, http=http)
+            self.service = build("gmail", "v1", credentials=credentials)
         elif access_token:
             creds = Credentials(token=access_token)
-            self.service = build("gmail", "v1", credentials=creds, http=http)
+            self.service = build("gmail", "v1", credentials=creds)
         else:
             raise ValueError("Either access_token or credentials must be provided")
 
@@ -423,21 +429,23 @@ class GmailWatchService:
         trace_context: Optional[str] = None,
     ):
         """
-        Initialize the Gmail Watch service.
-
-        Args:
-            access_token: OAuth2 access token from user authentication
-            project_id: Your GCP project ID (for Pub/Sub topic path)
-            timeout: Socket timeout for API calls
-            trace_context: Cloud Trace context for distributed tracing
+        Initialize the service for managing Gmail push notifications via Pub/Sub.
+        
+        Parameters:
+            access_token (str): OAuth2 access token used to authenticate Gmail API requests.
+            project_id (str): Google Cloud project ID used to build the full Pub/Sub topic path.
+            timeout (float): Global socket timeout (seconds) applied via socket.setdefaulttimeout.
+            trace_context (Optional[str]): Optional trace context string logged for distributed tracing.
         """
         self.access_token = access_token
         self.project_id = project_id
         self.trace_context = trace_context
 
-        http = httplib2.Http(timeout=timeout)
+        # Set socket timeout globally
+        socket.setdefaulttimeout(timeout)
+
         creds = Credentials(token=access_token)
-        self.service = build("gmail", "v1", credentials=creds, http=http)
+        self.service = build("gmail", "v1", credentials=creds)
 
         logger.info(
             "GmailWatchService initialized",

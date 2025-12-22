@@ -47,6 +47,14 @@ const formatDate = (dateStr: string | undefined) => {
   })
 }
 
+/**
+ * Render the Email Logs page showing scanning statistics, controls, and a table of scanned emails.
+ *
+ * Loads email data from the API, triggers a one-time background sync per session when available,
+ * supports manual refresh to force a resync and refetch, and provides status-based client-side filtering.
+ *
+ * @returns The JSX element for the Email Logs page including stats cards, filter controls, and the email table.
+ */
 export function EmailsPage() {
   const { data: session } = useSession()
   const [emails, setEmails] = useState<Email[]>([])
@@ -107,7 +115,8 @@ export function EmailsPage() {
     return () => {
       active = false
     }
-  }, [session, emails.length])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session])
 
   // Manual refresh function
   const handleRefresh = async () => {
