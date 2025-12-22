@@ -205,12 +205,12 @@ async def sync_emails(
                 'new_messages': count,
             }
 
-    except Exception as e:
-        logger.exception('Error syncing Gmail')
-        raise HTTPException(
-            status_code=500,
-            detail='Gmail sync failed',
-        ) from e
+        except Exception as e:
+            logger.exception('Error syncing Gmail')
+            raise HTTPException(
+                status_code=500,
+                detail='Gmail sync failed',
+            ) from e
 
 
 @router.post('/sync/background', status_code=status.HTTP_202_ACCEPTED)
