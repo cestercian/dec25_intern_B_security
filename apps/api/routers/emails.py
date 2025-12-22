@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import os
 import uuid
@@ -82,8 +83,8 @@ def build_email_event(
                 {
                     'email_id': str(new_id),
                     'message_id': email.message_id,
-                    'extracted_urls': email.extracted_urls,
-                    'attachment_metadata': [att.model_dump_json() for att in email.attachments],
+                    'extracted_urls': json.dumps(email.extracted_urls),
+                    'attachment_metadata': json.dumps([att.model_dump_json() for att in email.attachments]),
                 },
             )
         )
