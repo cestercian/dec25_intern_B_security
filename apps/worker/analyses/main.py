@@ -3,13 +3,14 @@ import logging
 import asyncio
 import httpx
 from typing import List, Optional, Dict, Any, Literal, Set
+import base64
+from dotenv import load_dotenv
+
 from fastapi import FastAPI, BackgroundTasks, status
 from pydantic import BaseModel
 from pythonjsonlogger import json as jsonlogger
 import google.auth
 from googleapiclient.discovery import build
-import base64
-from dotenv import load_dotenv
 
 load_dotenv()
 
