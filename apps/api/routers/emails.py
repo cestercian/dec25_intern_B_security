@@ -23,6 +23,9 @@ from packages.shared.types import BackgroundSyncRequest
 logger = logging.getLogger(__name__)
 downstream_tasks = []
 
+# Per-user sync locks to prevent concurrent sync operations
+_sync_locks: dict[uuid.UUID, asyncio.Lock] = {}
+
 
 async def email_exists(session: AsyncSession, message_id: str) -> bool:
     result = await session.exec(select(EmailEvent).where(EmailEvent.message_id == message_id))
@@ -167,25 +170,40 @@ async def sync_emails(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> dict:
-    try:
-        gmail_emails = await asyncio.wait_for(
-            run_in_threadpool(fetch_gmail_messages, x_google_token, 20),
-            timeout=30.0,
+    # Get or create lock for this user
+    if user.id not in _sync_locks:
+        _sync_locks[user.id] = asyncio.Lock()
+    
+    lock = _sync_locks[user.id]
+    
+    # Try to acquire lock without blocking
+    if lock.locked():
+        logger.info('Sync already in progress for user %s', user.id)
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail='Sync already in progress',
         )
+    
+    async with lock:
+        try:
+            gmail_emails = await asyncio.wait_for(
+                run_in_threadpool(fetch_gmail_messages, x_google_token, 20),
+                timeout=30.0,
+            )
 
-        logger.info('Starting email ingestion for user %s', user.id)
-        count = await ingest_emails(
-            emails=gmail_emails,
-            user_id=user.id,
-            session=session,
-            status=EmailStatus.PENDING,
-        )
-        logger.info('Completed email ingestion: %d new emails processed', count)
+            logger.info('Starting email ingestion for user %s', user.id)
+            count = await ingest_emails(
+                emails=gmail_emails,
+                user_id=user.id,
+                session=session,
+                status=EmailStatus.PENDING,
+            )
+            logger.info('Completed email ingestion: %d new emails processed', count)
 
-        return {
-            'status': 'synced',
-            'new_messages': count,
-        }
+            return {
+                'status': 'synced',
+                'new_messages': count,
+            }
 
     except Exception as e:
         logger.exception('Error syncing Gmail')
