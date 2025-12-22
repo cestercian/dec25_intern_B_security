@@ -2,7 +2,7 @@ import asyncio
 import logging
 import os
 import uuid
-from typing import Optional
+from typing import Optional, Iterable
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlmodel import select
@@ -16,14 +16,12 @@ from apps.api.services.risk import evaluate_static_risk
 from packages.shared.constants import EmailStatus
 from packages.shared.database import get_session
 from packages.shared.models import User, EmailEvent, EmailRead
-from packages.shared.queue import (
-    get_redis_client,
-    EMAIL_INTENT_QUEUE,
-)
+from packages.shared.queue import get_redis_client, EMAIL_INTENT_QUEUE, EMAIL_ANALYSIS_QUEUE
 from packages.shared.types import BackgroundSyncRequest
 
 
 logger = logging.getLogger(__name__)
+downstream_tasks = []
 
 
 async def email_exists(session: AsyncSession, message_id: str) -> bool:
@@ -101,10 +99,13 @@ async def ingest_emails(
     Deduplicate, persist emails, and enqueue downstream tasks.
     """
     count = 0
+    skipped = 0
     downstream_tasks: list[tuple[str, dict]] = []
 
     for email in emails:
         if await email_exists(session, email.message_id):
+            logger.debug('Email already exists: %s', email.message_id)
+            skipped += 1
             continue
 
         email_event, tasks = build_email_event(
@@ -118,6 +119,7 @@ async def ingest_emails(
         count += 1
 
     if count == 0:
+        logger.info('No new emails to ingest (skipped %d duplicate(s))', skipped)
         return 0
 
     await session.commit()
@@ -127,9 +129,10 @@ async def ingest_emails(
         await redis.xadd(stream, payload)
 
     logger.info(
-        'Queued %s downstream tasks for %s emails',
+        'Queued %s downstream tasks for %s new email(s) (skipped %d duplicate(s))',
         len(downstream_tasks),
         count,
+        skipped,
     )
 
     return count
@@ -170,79 +173,18 @@ async def sync_emails(
             timeout=30.0,
         )
 
+        logger.info('Starting email ingestion for user %s', user.id)
         count = await ingest_emails(
             emails=gmail_emails,
             user_id=user.id,
             session=session,
-            status=EmailStatus.PROCESSING,
+            status=EmailStatus.PENDING,
         )
-
-        for email in gmail_emails:
-            # Deduplicate by Gmail message ID
-            existing = await session.exec(
-                select(EmailEvent).where(EmailEvent.message_id == email.message_id)
-            )
-            if existing.first():
-                continue
-
-            new_id = uuid.uuid4()
-
-            email_event = EmailEvent(
-                id=new_id,
-                user_id=user.id,
-                # Envelope
-                sender=email.sender,
-                recipient=email.recipient,
-                subject=email.subject,
-                # Content
-                body_preview=email.body_preview,
-                message_id=email.message_id,
-                received_at=email.received_at,
-                # Auth / Security
-                spf_status=email.auth_status.spf if email.auth_status else None,
-                dkim_status=email.auth_status.dkim if email.auth_status else None,
-                dmarc_status=email.auth_status.dmarc if email.auth_status else None,
-                sender_ip=email.sender_ip,
-                # Status
-                status=email.status,
-            )
-
-            # Always queue for intent analysis
-            intent_payload = {
-                "email_id": str(new_id),
-                "subject": email.subject or "",
-                "body": email.body_text or email.body_html or "",
-            }
-            downstream_tasks.append((EMAIL_INTENT_QUEUE, intent_payload))
-
-            # Check if sandbox analysis is needed
-            should_sandbox, reason, score = evaluate_static_risk(email)
-            if should_sandbox:
-                email_event.sandboxed = True
-                analysis_payload = {
-                    "email_id": str(new_id),
-                    "message_id": email.message_id,
-                    "extracted_urls": email.extracted_urls,
-                    "attachment_metadata": [
-                        att.model_dump_json() for att in email.attachments
-                    ],
-                }
-                downstream_tasks.append((EMAIL_ANALYSIS_QUEUE, analysis_payload))
-
-            session.add(email_event)
-            count += 1
-
-        if count > 0:
-            await session.commit()
-
-            # Push new emails to Intent worker queue for analysis
-            redis = await get_redis_client()
-            await redis.rpush(EMAIL_INTENT_QUEUE, *new_email_ids)
-            logger.info(f"Pushed {count} new emails to Intent worker queue")
+        logger.info('Completed email ingestion: %d new emails processed', count)
 
         return {
-            "status": "synced",
-            "new_messages": count,
+            'status': 'synced',
+            'new_messages': count,
         }
 
     except Exception as e:
