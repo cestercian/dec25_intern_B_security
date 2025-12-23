@@ -15,7 +15,7 @@ def get_model():
         raise RuntimeError("GOOGLE_API_KEY environment variable is missing or empty.")
 
     return ChatGoogleGenerativeAI(
-        model="gemini-1.5-flash",
+        model="models/gemini-flash-lite-latest",
         temperature=0,
         google_api_key=api_key,
     )

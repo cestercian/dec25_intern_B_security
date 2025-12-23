@@ -20,6 +20,31 @@ from apps.worker.intent.taxonomy import Intent
 # Configure logging
 logger = setup_logging("intent-worker")
 
+# Map intent types to base risk scores (0-100)
+RISK_MAPPING = {
+    # High risk security threats
+    Intent.PHISHING: 95,
+    Intent.MALWARE: 98,
+    Intent.SOCIAL_ENGINEERING: 90,
+    Intent.BEC_FRAUD: 95,
+    Intent.RECONNAISSANCE: 75,
+    Intent.SPAM: 60,
+    
+    # Medium risk business emails
+    Intent.INVOICE: 40,
+    Intent.PAYMENT: 45,
+    Intent.SALES: 30,
+    
+    # Low risk legitimate emails
+    Intent.MEETING_REQUEST: 15,
+    Intent.TASK_REQUEST: 15,
+    Intent.FOLLOW_UP: 10,
+    Intent.SUPPORT: 20,
+    Intent.NEWSLETTER: 25,
+    Intent.PERSONAL: 10,
+    Intent.UNKNOWN: 50,
+}
+
 
 def classify_risk(score: int) -> RiskTier:
     if score < 30:
@@ -27,15 +52,6 @@ def classify_risk(score: int) -> RiskTier:
     if score < 80:
         return RiskTier.CAUTIOUS
     return RiskTier.THREAT
-
-
-def build_dummy_analysis(score: int) -> dict:
-    return {
-        "indicators": ["suspicious_link", "urgency_language"],
-        "confidence": round(min(1.0, max(0.0, score / 100)), 2),
-        "threat_type": "phishing" if score >= 50 else "info",
-        "analyzed_at": datetime.now(timezone.utc).isoformat(),
-    }
 
 
 def _create_gmail_label_sync(service, label_name: str) -> str:
@@ -185,7 +201,7 @@ async def apply_gmail_label(user_id: str, message_id: str, risk_tier: RiskTier) 
         return False
 
 
-async def process_email(session: AsyncSession, email: EmailEvent) -> None:
+async def process_email(session: AsyncSession, email: EmailEvent, payload_subject: str = None, payload_body: str = None) -> bool:
     session.add(email)
     await session.commit()
     await session.refresh(email)
@@ -210,7 +226,7 @@ async def process_email(session: AsyncSession, email: EmailEvent) -> None:
         email.intent = final_intent.value if final_intent else None
         email.intent_confidence = final_confidence
         email.intent_indicators = final_indicators
-        email.intent_processed_at = datetime.now(timezone.utc)
+        email.intent_processed_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
         # Use the Enum object for logic lookup
         if final_intent and final_intent in RISK_MAPPING:
@@ -229,17 +245,21 @@ async def process_email(session: AsyncSession, email: EmailEvent) -> None:
 
         email.status = EmailStatus.COMPLETED
         
-        # Apply Gmail label based on risk tier
-        if email.message_id and email.user_id:
-            await apply_gmail_label(str(email.user_id), email.message_id, risk_tier)
+        # Commit changes to database
+        session.add(email)
+        await session.commit()
+        await session.refresh(email)  # Refresh prevents 'greenlet_spawn' error on attribute access
         
-    except Exception:  # noqa: BLE001
-        email.status = EmailStatus.FAILED
-        email.analysis_result = {"error": "processing_failed"}
-
+        # Apply Gmail label based on risk tier
+        if email.message_id and email.user_id and email.risk_tier:
+            await apply_gmail_label(str(email.user_id), email.message_id, email.risk_tier)
+        
+        return True
+        
     except Exception as e:
         logger.error(f"Error in process_email: {e}")
         try:
+            await session.rollback()  # Rollback the failed transaction so we can use the session again
             email.status = EmailStatus.FAILED
             session.add(email)
             await session.commit()
