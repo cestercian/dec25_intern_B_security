@@ -75,7 +75,7 @@ jobs:
 
             # Install dependencies
             echo "Installing dependencies..."
-            npm run install:all || npm install || { echo "Error: Failed to run npm install"; exit 1; }
+            uv sync
 
             # Ensure PM2 is installed
             if ! which pm2 > /dev/null; then
