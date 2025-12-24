@@ -1,9 +1,9 @@
 "use client"
 
 import type React from "react"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 
-import { Shield, Mail, Settings, LayoutDashboard, Bell, ChevronDown } from "lucide-react"
+import { Shield, Mail, Settings, LayoutDashboard, ChevronDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -21,7 +21,7 @@ import { useSession, signOut } from "next-auth/react"
 import { syncEmails } from "@/lib/api"
 
 const navigation = [
-  { name: "Overview", href: "/", icon: LayoutDashboard },
+  { name: "Overview", href: "/dashboard", icon: LayoutDashboard },
   { name: "Emails", href: "/emails", icon: Mail },
   { name: "Settings", href: "/settings", icon: Settings },
 ]
@@ -37,9 +37,11 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     setMounted(true)
   }, [])
 
-  // Trigger background sync immediately when session is ready
+  // Trigger background sync ONCE when session is first ready
+  const syncedRef = useRef(false)
   useEffect(() => {
-    if (session?.accessToken && session?.idToken) {
+    if (session?.accessToken && session?.idToken && !syncedRef.current) {
+      syncedRef.current = true
       syncEmails(session.idToken, session.accessToken).catch((err) => 
         console.error("Background sync failed:", err)
       )
@@ -104,11 +106,6 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
               </div>
 
               <div className="flex items-center gap-4">
-                <Button variant="ghost" size="icon" className="relative">
-                  <Bell className="h-5 w-5" />
-                  <span className="absolute top-1 right-1 w-2 h-2 bg-destructive rounded-full" />
-                </Button>
-
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" className="gap-2">
