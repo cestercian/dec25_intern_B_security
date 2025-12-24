@@ -5,19 +5,8 @@ import { useSession } from "next-auth/react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Shield, AlertTriangle, Mail, TrendingUp, TrendingDown, CheckCircle } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
-import { Line, LineChart, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip } from "recharts"
-import { ChartContainer } from "@/components/ui/chart"
+import { ChartAreaInteractive } from "@/components/chart-area-interactive"
 import { fetchEmails, type Email } from "@/lib/api"
-
-// Sample chart data - in production this would come from API
-const threatData = [
-  { time: "00:00", threats: 2, blocked: 2, safe: 14 },
-  { time: "04:00", threats: 1, blocked: 1, safe: 16 },
-  { time: "08:00", threats: 3, blocked: 3, safe: 42 },
-  { time: "12:00", threats: 5, blocked: 5, safe: 58 },
-  { time: "16:00", threats: 3, blocked: 3, safe: 49 },
-  { time: "20:00", threats: 2, blocked: 2, safe: 27 },
-]
 
 export function OverviewPage() {
   const { data: session } = useSession()
@@ -128,51 +117,8 @@ export function OverviewPage() {
         </Card>
       </div>
 
-      {/* Threat Activity Chart */}
-      <Card className="border-border">
-        <CardHeader>
-          <CardTitle className="text-foreground">Email Activity (Last 24 Hours)</CardTitle>
-          <CardDescription>Real-time monitoring of your email security</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ChartContainer
-            id="email-activity-chart"
-            config={{
-              threats: {
-                label: "Threats Detected",
-                color: "oklch(0.58 0.24 27)",
-              },
-              blocked: {
-                label: "Threats Blocked",
-                color: "oklch(0.58 0.24 264)",
-              },
-              safe: {
-                label: "Safe Emails",
-                color: "oklch(0.65 0.18 162)",
-              },
-            }}
-            className="h-[300px]"
-          >
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={threatData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.22 0 0)" />
-                <XAxis dataKey="time" stroke="oklch(0.65 0 0)" />
-                <YAxis stroke="oklch(0.65 0 0)" />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "oklch(0.16 0 0)",
-                    border: "1px solid oklch(0.22 0 0)",
-                    borderRadius: "8px",
-                  }}
-                />
-                <Line type="monotone" dataKey="threats" stroke="oklch(0.58 0.24 27)" strokeWidth={2} />
-                <Line type="monotone" dataKey="blocked" stroke="oklch(0.58 0.24 264)" strokeWidth={2} />
-                <Line type="monotone" dataKey="safe" stroke="oklch(0.65 0.18 162)" strokeWidth={2} />
-              </LineChart>
-            </ResponsiveContainer>
-          </ChartContainer>
-        </CardContent>
-      </Card>
+      {/* Email Activity Chart */}
+      <ChartAreaInteractive />
 
       {/* Recent Email Activity */}
       <Card className="border-border">
